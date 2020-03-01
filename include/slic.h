@@ -16,6 +16,12 @@ typedef struct spixel_data
     unsigned char a;
     unsigned char b;
     unsigned char unused; // padding;
+
+    // Accumulators for superpixel averaging
+    int l_acc;
+    int a_acc;
+    int b_acc;
+    int n_pix;
 } spixel_data;
 
 typedef struct ownership_data
@@ -28,8 +34,10 @@ void initialize_centers(spixel_data* spx_data);
 void initialize_ownership(ownership_data* h_ownership_data);
 
 __global__ void kernelOverPixels(unsigned char* d_image, unsigned char* d_output);
+__global__ void cummulativeCount(unsigned char* d_image, ownership_data* d_ownership_data, spixel_data* d_spixel_data);
+__global__ void averaging(spixel_data* d_spixel_data);
 
 void test_mark_spixel_centers(unsigned char* h_image, const spixel_data* spx_data);
-void test_block_spixels(unsigned char* h_image, ownership_data* h_ownership_data);
+void test_block_spixels(unsigned char* h_image, ownership_data* h_ownership_data, spixel_data* h_spixel_data);
 
 #endif
