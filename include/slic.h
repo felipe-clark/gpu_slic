@@ -18,9 +18,18 @@ typedef struct spixel_data
     unsigned char unused; // padding;
 } spixel_data;
 
+typedef struct ownership_data
+{
+    int i;
+    int j;
+} ownership_data;
+
 void initialize_centers(spixel_data* spx_data);
-void test_mark_spixel_centers(unsigned char* h_image, const spixel_data* spx_data);
+void initialize_ownership(ownership_data* h_ownership_data);
 
 __global__ void kernelOverPixels(unsigned char* d_image, unsigned char* d_output);
+
+void test_mark_spixel_centers(unsigned char* h_image, const spixel_data* spx_data);
+void test_block_spixels(unsigned char* h_image, ownership_data* h_ownership_data);
 
 #endif

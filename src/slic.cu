@@ -53,6 +53,9 @@ int main(int argc, char** argv)
     spixel_data* h_spixel_data = (spixel_data*)malloc(spixel_size * spixel_size * sizeof(spixel_data));
     initialize_centers(h_spixel_data);
 
+    ownership_data* h_ownership_data = (ownership_data*)malloc(width * height * sizeof(ownership_data));
+    initialize_ownership(h_ownership_data);
+
 
 
 
@@ -76,6 +79,7 @@ int main(int argc, char** argv)
     cv::Mat rgb_result_image;
 
     test_mark_spixel_centers(h_result.data, h_spixel_data);
+    test_block_spixels(h_result.data, h_ownership_data);
 
     cv::cvtColor(h_result, rgb_result_image, cv::COLOR_Lab2BGR);
 
@@ -102,6 +106,24 @@ void initialize_centers(spixel_data* spx_data)
     }
 }
 
+void initialize_ownership(ownership_data* h_ownership_data)
+{
+    for (int x = 0; x < width; x++)
+    {
+        for(int y = 0; y < height; y++)
+        {
+            int own_index = y * width + x;
+
+
+            int i = x/spixel_size;
+            int j = y/spixel_size;
+
+            h_ownership_data[own_index].i = i;
+            h_ownership_data[own_index].j = j;
+        }
+    }
+}
+
 void test_mark_spixel_centers(unsigned char* h_image, const spixel_data* spx_data)
 {
     for (int i = 0; i < spixel_width; i++)
@@ -115,6 +137,21 @@ void test_mark_spixel_centers(unsigned char* h_image, const spixel_data* spx_dat
             int img_index = 3 * (y * width + x);
 
             h_image[img_index] = 0;
+        }
+    }
+}
+
+void test_block_spixels(unsigned char* h_image, ownership_data* h_ownership_data)
+{
+    for (int x = 0; x < width; x++)
+    {
+        for(int y = 0; y < height; y++)
+        {
+            int own_index = y * width + x;
+            int img_index = 3 * own_index;
+
+            h_image[img_index+1] = h_ownership_data[own_index].i*10;
+            h_image[img_index+2] = h_ownership_data[own_index].j*10;
         }
     }
 }
