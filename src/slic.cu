@@ -23,12 +23,9 @@ int main(int argc, char** argv)
         return -2;
     }
 
-    cv::Mat lab_image;
-    cv::cvtColor(image, lab_image, cv::COLOR_BGR2Lab);
-
     cv::Size size(width, height);
     cv::Mat resized;
-    cv::resize(lab_image, resized, size);
+    cv::resize(image, resized, size);
 
     if(!resized.isContinuous())
     {
@@ -36,17 +33,30 @@ int main(int argc, char** argv)
         return -3;
     }
 
-    printf("Bytes: %lu\n", resized.total()*resized.channels());
+    cv::imwrite("./resized_image.tif", resized);
+
+    cv::Mat lab_image;
+    cv::cvtColor(resized, lab_image, cv::COLOR_BGR2Lab);
+
+    printf("Bytes: %lu\n", lab_image.total()*lab_image.channels());
 
     // Preparations for Kernel invokation
     unsigned char* d_output;
     unsigned char* d_image;
-    cv::Mat h_result = resized.clone();
+    cv::Mat h_result = lab_image.clone();
     int byte_size = 3 * width * height;
     cudaMalloc(&d_output, byte_size);
     cudaMalloc(&d_image, byte_size);
 
-    cudaMemcpy(d_image, resized.data, byte_size, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_image, lab_image.data, byte_size, cudaMemcpyHostToDevice);
+
+    spixel_data* h_spixel_data = (spixel_data*)malloc(spixel_size * spixel_size * sizeof(spixel_data));
+    initialize_centers(h_spixel_data);
+
+
+
+
+    // -------------------- The Kernel magic --------------------
 
     // Configure how to launch the Matrix Add CUDA Kernel
     dim3 threadsPerBlock( 32, 32 ) ;
@@ -58,16 +68,61 @@ int main(int argc, char** argv)
 
     dim3 blocksPerGrid( blockPerGridX, blockPerGridY,  blockPerGridZ );
 
-    testKernel<<<blocksPerGrid, threadsPerBlock>>>(d_image, d_output);
+    kernelOverPixels<<<blocksPerGrid, threadsPerBlock>>>(d_image, d_output);
 
     cudaMemcpy(h_result.data, d_output, byte_size, cudaMemcpyDeviceToHost);
     cudaDeviceReset();
 
     cv::Mat rgb_result_image;
+
+    test_mark_spixel_centers(h_result.data, h_spixel_data);
+
     cv::cvtColor(h_result, rgb_result_image, cv::COLOR_Lab2BGR);
 
-    cv::imwrite("./Darkened_image.jpg", rgb_result_image);
+    cv::imwrite("./processed_image.jpg", rgb_result_image);
 
     printf("SUCCESS!\n");
 
+}
+
+
+void initialize_centers(spixel_data* spx_data)
+{
+    for (int i = 0; i < spixel_width; i++)
+    {
+        int max_y = 0;
+        for(int j = 0; j < spixel_height; j++)
+        {
+            int index = j * spixel_width + i;
+            spx_data[index].l = 127;
+            spx_data[index].a = 127;
+            spx_data[index].b = 127;
+            spx_data[index].x = (2 * spixel_width * i + spixel_width)/2;
+            spx_data[index].y = (2 * spixel_height * j + spixel_height)/2;
+
+            if(spx_data[index].y > max_y)
+                max_y = spx_data[index].y;
+        }
+
+        printf("Max_y = %d\n", max_y);
+    }
+}
+
+void test_mark_spixel_centers(unsigned char* h_image, const spixel_data* spx_data)
+{
+    for (int i = 0; i < spixel_width; i++)
+    {
+        for(int j = 0; j < spixel_height; j++)
+        {
+            int index = j * spixel_width + i;
+            int x = spx_data[index].x;
+            int y = spx_data[index].y;
+
+            int img_index = 3 * (y * width + x);
+
+            h_image[img_index] = 0;
+            h_image[img_index + 3] = 0;
+            h_image[img_index + 6] = 0;
+        }
+    }
 }
