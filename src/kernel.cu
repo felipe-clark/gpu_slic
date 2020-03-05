@@ -1,22 +1,21 @@
 #include "../include/slic.h"
 
-__global__ void k_cumulativeCount(const unsigned char* d_pix_data, const own_data* d_own_data, spx_data* d_spx_data)
+__global__ void k_cumulativeCount(const pix_data* d_pix_data, const own_data* d_own_data, spx_data* d_spx_data)
 {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (y < pix_height && x < pix_width) 
     {
-        int own_index = y * pix_width + x;
-        int pix_index = 3 * own_index;
-        int i = d_own_data[own_index].i;
-        int j = d_own_data[own_index].j;
-        int spx_idx = j * spx_width + i;
+        int pix_index = y * pix_width + x;
+        int i = d_own_data[pix_index].i;
+        int j = d_own_data[pix_index].j;
+        int spx_index = j * spx_width + i;
 
-        atomicAdd(&(d_spx_data[spx_idx].l_acc), d_pix_data[pix_index + 0]);
-        atomicAdd(&(d_spx_data[spx_idx].a_acc), d_pix_data[pix_index + 1]);
-        atomicAdd(&(d_spx_data[spx_idx].b_acc), d_pix_data[pix_index + 2]);
-        atomicAdd(&(d_spx_data[spx_idx].num), 1);
+        atomicAdd(&(d_spx_data[spx_index].l_acc), d_pix_data[pix_index].l);
+        atomicAdd(&(d_spx_data[spx_index].a_acc), d_pix_data[pix_index].a);
+        atomicAdd(&(d_spx_data[spx_index].b_acc), d_pix_data[pix_index].b);
+        atomicAdd(&(d_spx_data[spx_index].num), 1);
     }
 }
 
@@ -27,9 +26,9 @@ __global__ void k_averaging(spx_data* d_spx_data)
 
     if (i < spx_width && j < spx_height)
     {
-        int spx_idx = j * spx_width + i;
-        d_spx_data[spx_idx].l = d_spx_data[spx_idx].l_acc / d_spx_data[spx_idx].num;
-        d_spx_data[spx_idx].a = d_spx_data[spx_idx].a_acc / d_spx_data[spx_idx].num;
-        d_spx_data[spx_idx].b = d_spx_data[spx_idx].b_acc / d_spx_data[spx_idx].num;
+        int spx_index = j * spx_width + i;
+        d_spx_data[spx_index].l = d_spx_data[spx_index].l_acc / d_spx_data[spx_index].num;
+        d_spx_data[spx_index].a = d_spx_data[spx_index].a_acc / d_spx_data[spx_index].num;
+        d_spx_data[spx_index].b = d_spx_data[spx_index].b_acc / d_spx_data[spx_index].num;
     }
 }

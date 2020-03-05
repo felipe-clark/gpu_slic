@@ -39,11 +39,11 @@ int main(int argc, char** argv)
     printf("Bytes: %lu\n", m_lab_image.total()*m_lab_image.channels());
 
     // Preparations for Kernel invocation
-    unsigned char* d_pix_data;
+    pix_data* d_pix_data;
     own_data* d_own_data;
     spx_data* d_spx_data;
 
-    int pix_byte_size = 3 * pix_width * pix_height * sizeof(unsigned char);
+    int pix_byte_size = pix_width * pix_height * sizeof(pix_data);
     int own_byte_size = pix_width * pix_height * sizeof(own_data);
     int spx_byte_size = spx_size * spx_size * sizeof(spx_data);
 
@@ -81,7 +81,7 @@ int main(int argc, char** argv)
     cudaMemcpy(h_own_data, d_own_data, own_byte_size, cudaMemcpyDeviceToHost);
     cudaMemcpy(h_spx_data, d_spx_data, spx_byte_size, cudaMemcpyDeviceToHost);
 
-    color_solid(m_lab_image.data, h_own_data, h_spx_data);
+    color_solid((pix_data*)m_lab_image.data, h_own_data, h_spx_data);
 
     cv::Mat m_rgb_result_image;
     cv::cvtColor(m_lab_image, m_rgb_result_image, cv::COLOR_Lab2BGR);
@@ -132,19 +132,17 @@ void initialize_own(own_data* h_own_data)
 }
 
 // Solid colorizer: Paints each superpixel with its average color
-void color_solid(unsigned char* h_pix_data, const own_data* h_own_data, const spx_data* h_spx_data)
+void color_solid(pix_data* h_pix_data, const own_data* h_own_data, const spx_data* h_spx_data)
 {
     for (int x = 0; x < pix_width; x++)
     {
         for(int y = 0; y < pix_height; y++)
         {
-            int own_index = y * pix_width + x;
-            int pix_index = 3 * own_index;
-
-            int spx_index = h_own_data[own_index].j * spx_width + h_own_data[own_index].i;
-            h_pix_data[pix_index + 0] = h_spx_data[spx_index].l;
-            h_pix_data[pix_index + 1] = h_spx_data[spx_index].a;
-            h_pix_data[pix_index + 2] = h_spx_data[spx_index].b;
+            int pix_index = y * pix_width + x;
+            int spx_index = h_own_data[pix_index].j * spx_width + h_own_data[pix_index].i;
+            h_pix_data[pix_index].l = h_spx_data[spx_index].l;
+            h_pix_data[pix_index].a = h_spx_data[spx_index].a;
+            h_pix_data[pix_index].b = h_spx_data[spx_index].b;
         }
     }
 }
