@@ -61,6 +61,12 @@ int main(int argc, char** argv)
     initialize_spx(h_spx_data);
     cudaMemcpy(d_spx_data, h_spx_data, spx_byte_size, cudaMemcpyHostToDevice);
 
+    cudaMemcpyToSymbol("slic_factor", &slic_factor_h, sizeof(float), 0, cudaMemcpyHostToDevice);
+    cudaMemcpyToSymbol("max_float", &max_float_h, sizeof(float), 0, cudaMemcpyHostToDevice);
+
+    // = (float)slic_m / slic_s
+// std::numeric_limits<float>::max()
+
     // -------------------- The Kernel magic --------------------
 
     dim3 pix_threadsPerBlock( 32, 32 ) ;
@@ -68,6 +74,7 @@ int main(int argc, char** argv)
     int pix_blockPerGridY = (pix_height + pix_threadsPerBlock.y-1)/pix_threadsPerBlock.y;
     dim3 pix_blocksPerGrid(pix_blockPerGridX, pix_blockPerGridY, 1);
 
+    //k_ownership<<<pix_blocksPerGrid, pix_threadsPerBlock>>>(d_pix_data, d_own_data, d_spx_data);
     k_cumulativeCount<<<pix_blocksPerGrid, pix_threadsPerBlock>>>(d_pix_data, d_own_data, d_spx_data);
 
     dim3 spx_threadsPerBlock(32, 32);
@@ -77,11 +84,21 @@ int main(int argc, char** argv)
 
     k_averaging<<<spx_blocksPerGrid, spx_threadsPerBlock>>>(d_spx_data);
 
+    for (int i = 0 ; i<10; i++)
+    {
+        k_reset<<<spx_blocksPerGrid, spx_threadsPerBlock>>>(d_spx_data);
+        k_ownership<<<pix_blocksPerGrid, pix_threadsPerBlock>>>(d_pix_data, d_own_data, d_spx_data);
+        k_cumulativeCount<<<pix_blocksPerGrid, pix_threadsPerBlock>>>(d_pix_data, d_own_data, d_spx_data);
+        k_averaging<<<spx_blocksPerGrid, spx_threadsPerBlock>>>(d_spx_data);
+    }
+
     cudaMemcpy(m_lab_image.data, d_pix_data, pix_byte_size, cudaMemcpyDeviceToHost);
     cudaMemcpy(h_own_data, d_own_data, own_byte_size, cudaMemcpyDeviceToHost);
     cudaMemcpy(h_spx_data, d_spx_data, spx_byte_size, cudaMemcpyDeviceToHost);
 
-    color_solid((pix_data*)m_lab_image.data, h_own_data, h_spx_data);
+    color_borders((pix_data*)m_lab_image.data, h_own_data, h_spx_data);
+    //color_solid((pix_data*)m_lab_image.data, h_own_data, h_spx_data);
+    //test_color_own((pix_data*)m_lab_image.data, h_own_data, h_spx_data);
 
     cv::Mat m_rgb_result_image;
     cv::cvtColor(m_lab_image, m_rgb_result_image, cv::COLOR_Lab2BGR);
@@ -143,6 +160,42 @@ void color_solid(pix_data* h_pix_data, const own_data* h_own_data, const spx_dat
             h_pix_data[pix_index].l = h_spx_data[spx_index].l;
             h_pix_data[pix_index].a = h_spx_data[spx_index].a;
             h_pix_data[pix_index].b = h_spx_data[spx_index].b;
+        }
+    }
+}
+
+int get_spx_id(const own_data* h_own_data, int x, int y)
+{
+    int pix_index = y * pix_width + x;
+    return h_own_data[pix_index].j * spx_width + h_own_data[pix_index].i;
+}
+
+// Colors the border of superpixels to make it easier to visualize them
+void color_borders(pix_data* h_pix_data, const own_data* h_own_data, const spx_data* h_spx_data)
+{
+    for (int x = 0; x < pix_width; x++)
+    {
+        for(int y = 0; y < pix_height; y++)
+        {
+            int pix_index = y * pix_width + x;
+            int spx_id = get_spx_id(h_own_data, x, y);
+
+            bool border = false;
+            border = border || (x == 0) || spx_id != get_spx_id(h_own_data, x-1, y);
+            border = border || (x == pix_width-1) || spx_id != get_spx_id(h_own_data, x+1, y);
+            border = border || (y == 0) || spx_id != get_spx_id(h_own_data, x, y-1);
+            border = border || (y == pix_height-1) || spx_id != get_spx_id(h_own_data, x, y+1);
+            border = border || (x == 0) || (y==0) || spx_id != get_spx_id(h_own_data, x-1, y-1);
+            border = border || (x == 0) || (y == pix_height-1) || spx_id != get_spx_id(h_own_data, x-1, y+1);
+            border = border || (x == pix_width-1) || (y==0) || spx_id != get_spx_id(h_own_data, x+1, y-1);
+            border = border || (x == pix_width-1) || (y == pix_height-1) || spx_id != get_spx_id(h_own_data, x+1, y+1);
+
+            if(border)
+            {
+                h_pix_data[pix_index].l = 0;
+                h_pix_data[pix_index].a = 0;
+                h_pix_data[pix_index].b = 0;
+            }
         }
     }
 }

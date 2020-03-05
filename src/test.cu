@@ -27,7 +27,7 @@ __global__ void k_test_darkenImage(const pix_data* d_pix_input, pix_data* d_pix_
 // Useful for debugging superpixel ownership.
 void test_color_own(pix_data* h_pix_data, const own_data* h_own_data, const spx_data* h_spx_data)
 {
-    const int color_step = 10;
+    const int color_step = 100;
     for (int x = 0; x < pix_width; x++)
     {
         for(int y = 0; y < pix_height; y++)
