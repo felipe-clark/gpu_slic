@@ -45,7 +45,7 @@ int main(int argc, char** argv)
 
     int pix_byte_size = pix_width * pix_height * sizeof(pix_data);
     int own_byte_size = pix_width * pix_height * sizeof(own_data);
-    int spx_byte_size = spx_size * spx_size * sizeof(spx_data);
+    int spx_byte_size = spx_width * spx_height * sizeof(spx_data);
 
     cudaMalloc(&d_pix_data, pix_byte_size);
     cudaMalloc(&d_own_data, own_byte_size);

@@ -46,8 +46,8 @@ __global__ void k_ownership(const pix_data* d_pix_data, own_data* d_own_data, co
     if (y < pix_height && x < pix_width) 
     {
         int pix_index = y * pix_width + x;
-        int i_center = x/spx_width;
-        int j_center = y/spx_width;
+        int i_center = x/spx_size;
+        int j_center = y/spx_size;
 
         int l = d_pix_data[pix_index].l;
         int a = d_pix_data[pix_index].a;
