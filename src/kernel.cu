@@ -65,11 +65,11 @@ __global__ void k_ownership(const pix_data* d_pix_data, own_data* d_own_data, co
                 int l_dist = powf(l-d_spx_data[spx_index].l, 2);
                 int a_dist = powf(a-d_spx_data[spx_index].a, 2);
                 int b_dist = powf(b-d_spx_data[spx_index].b, 2);
-                float dlab = sqrtf(l_dist + a_dist + b_dist);
+                float dlab = l_dist + a_dist + b_dist;
 
                 int x_dist = powf(x-d_spx_data[spx_index].x, 2);
                 int y_dist = powf(y-d_spx_data[spx_index].y, 2);
-                float dxy = sqrtf(x_dist + y_dist);
+                float dxy = x_dist + y_dist;
 
                 float D = dlab + slic_factor * dxy;
 
