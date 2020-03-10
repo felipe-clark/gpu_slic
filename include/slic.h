@@ -5,26 +5,24 @@
 #include <limits>
 
 // Search window of superpixels
-const int window_size = 2;
+const int window_size = 1;
 
 // Image size, measured in pixels
 const int pix_width = 4096;
 const int pix_height = 2048;
 
 // Superpixel size, and image size measured in superpixels
-const int spx_size = 128; //64 x 64
+const int spx_size = 64; //64 x 64
 const int spx_width = pix_width/spx_size;
 const int spx_height = pix_height/spx_size;
 
-const int slic_m = 10000;//10;
+const int slic_m = 10;//10;
 const int slic_n = pix_width * pix_height;
 const int slic_k = spx_width * spx_height;
 const float slic_s = sqrt((float)slic_n/(float)slic_k);
 //const float slic_factor_h = (float)slic_m / slic_s;
 const float slic_factor_h = 2.5*2.5*slic_m*slic_m/(spx_size*spx_size);
 const float max_float_h = std::numeric_limits<float>::max();
-__constant__ float slic_factor;
-__constant__ float max_float;
 
 // Pixel
 // Every pixel of the original image is
@@ -83,6 +81,7 @@ struct spx_data
 };
 
 // Initialization
+void initializeSlicFactor();
 void initialize_own(own_data* h_own_data);
 void initialize_n_own(own_data* h_n_own_data);
 void initialize_spx(spx_data* h_spx_data);

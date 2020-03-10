@@ -1,5 +1,14 @@
 #include <cmath>
+#include <cstdio>
 #include "../include/slic.h"
+
+__device__ __constant__ float slic_factor;
+
+void initializeSlicFactor()
+{
+    const float * slic_factor_hp = &slic_factor_h;
+    cudaError_t cudaStatus = cudaMemcpyToSymbol(slic_factor, slic_factor_hp, sizeof(float));
+}
 
 __global__ void k_cumulativeCount(const pix_data* d_pix_data, const own_data* d_own_data, spx_data* d_spx_data)
 {
@@ -36,7 +45,7 @@ __global__ void k_averaging(spx_data* d_spx_data)
 
 __global__ void k_ownership(const pix_data* d_pix_data, own_data* d_own_data, const spx_data* d_spx_data)
 {
-    float min_dist = 99999999.9;// max_float;
+    float min_dist = 10E99;// max_float;
     int min_i = 0;
     int min_j = 0;
 
@@ -62,14 +71,19 @@ __global__ void k_ownership(const pix_data* d_pix_data, own_data* d_own_data, co
                 if (j < 0 || j >= spx_height) continue;
 
                 int spx_index = j * spx_width + i;
-                int l_dist = powf(l-d_spx_data[spx_index].l, 2);
-                int a_dist = powf(a-d_spx_data[spx_index].a, 2);
-                int b_dist = powf(b-d_spx_data[spx_index].b, 2);
-                float dlab = l_dist + a_dist + b_dist;
+                int l_dist = l-(int)(d_spx_data[spx_index].l);
+                l_dist *= l_dist;
+                int a_dist = a-(int)(d_spx_data[spx_index].a);
+                a_dist *= a_dist;
+                int b_dist = b-(int)(d_spx_data[spx_index].b);
+                b_dist *= b_dist;
+                int dlab = l_dist + a_dist + b_dist;
 
-                int x_dist = powf(x-d_spx_data[spx_index].x, 2);
-                int y_dist = powf(y-d_spx_data[spx_index].y, 2);
-                float dxy = x_dist + y_dist;
+                int x_dist = x-(int)d_spx_data[spx_index].x;
+                x_dist *= x_dist;
+                int y_dist = y-(int)d_spx_data[spx_index].y;
+                y_dist *= y_dist;
+                int dxy = x_dist + y_dist;
 
                 float D = dlab + slic_factor * dxy;
 

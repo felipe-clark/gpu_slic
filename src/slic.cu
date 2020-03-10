@@ -64,8 +64,7 @@ int main(int argc, char** argv)
     initialize_spx(h_spx_data);
     cudaMemcpy(d_spx_data, h_spx_data, spx_byte_size, cudaMemcpyHostToDevice);
 
-    cudaMemcpyToSymbol("slic_factor", &slic_factor_h, sizeof(float), 0, cudaMemcpyHostToDevice);
-    cudaMemcpyToSymbol("max_float", &max_float_h, sizeof(float), 0, cudaMemcpyHostToDevice);
+    initializeSlicFactor();
 
     // = (float)slic_m / slic_s
 // std::numeric_limits<float>::max()
