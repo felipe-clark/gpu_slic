@@ -16,7 +16,7 @@ const int spx_size = 128; //64 x 64
 const int spx_width = pix_width/spx_size;
 const int spx_height = pix_height/spx_size;
 
-const int slic_m = 10;//10;
+const int slic_m = 10000;//10;
 const int slic_n = pix_width * pix_height;
 const int slic_k = spx_width * spx_height;
 const float slic_s = sqrt((float)slic_n/(float)slic_k);
@@ -27,6 +27,9 @@ __constant__ float slic_factor;
 __constant__ float max_float;
 
 // Pixel
+// Every pixel of the original image is
+// broken down into the three components
+// of the LAB color space
 struct pix_data
 {
     unsigned char l;
@@ -35,8 +38,12 @@ struct pix_data
 };
 
 // Ownership
+// Every pixel of the original image is
+// "owned" by a cluster centroid
 struct own_data
 {
+    // Coordinates of the centroid in the
+    // super pixel matrix
     int i;
     int j;
 
@@ -55,6 +62,10 @@ struct own_data
 };
 
 // Superpixel
+// Every superpixel has a corresponding
+// x, y coordinate in the original image
+// plane and has averaged LAB components
+// taken from all its "owned" pixels.
 struct spx_data
 {
     int x;
