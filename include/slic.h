@@ -5,6 +5,8 @@
 #include <limits>
 
 // Search window of superpixels
+// This value must be final 1 due to
+// constraints of the implementation
 const int window_size = 1;
 
 // Image size, measured in pixels
@@ -12,7 +14,7 @@ const int pix_width = 4096;
 const int pix_height = 2048;
 
 // Superpixel size, and image size measured in superpixels
-const int spx_size = 64; //64 x 64
+const int spx_size = 128; //64 x 64 // Must be divisible by kernel invocation block size
 const int spx_width = pix_width/spx_size;
 const int spx_height = pix_height/spx_size;
 

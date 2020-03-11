@@ -29,6 +29,48 @@ __global__ void k_cumulativeCount(const pix_data* d_pix_data, const own_data* d_
     }
 }
 
+__global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data* d_own_data, spx_data* d_spx_data)
+{
+    __shared__ float acc[4][3][3][32][32]; //LAB+count, 3x3 neighbors, 32x32 values
+
+    int tidx=threadIdx.x;
+    int tidy=threadIdx.y;
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    for (int nx=0;nx<3;++nx) for (int ny=0;ny<3;++ny) for(int c=0;c<4;++c) acc[c][nx][ny][tidx][tidy]=0;
+
+    int i_center = x / spx_size;
+    int j_center = y / spx_size;
+    int pix_index = y * pix_width + x;
+    int i = d_own_data[pix_index].i;
+    int j = d_own_data[pix_index].j;
+    int nx = (i<i_center) ? 0 : ((i>i_center) ? 2 : 1);
+    int ny = (j<j_center) ? 0 : ((j>j_center) ? 2 : 1);
+    acc[0][nx][ny][tidx][tidy] = d_pix_data[pix_index].l; 
+    acc[1][nx][ny][tidx][tidy] = d_pix_data[pix_index].a; 
+    acc[2][nx][ny][tidx][tidy] = d_pix_data[pix_index].b; 
+    acc[3][nx][ny][tidx][tidy] = 1; 
+    
+    __syncthreads();
+
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (y < pix_height && x < pix_width) 
+    {
+        int pix_index = y * pix_width + x;
+        int i = d_own_data[pix_index].i;
+        int j = d_own_data[pix_index].j;
+        int spx_index = j * spx_width + i;
+
+        atomicAdd(&(d_spx_data[spx_index].l_acc), d_pix_data[pix_index].l);
+        atomicAdd(&(d_spx_data[spx_index].a_acc), d_pix_data[pix_index].a);
+        atomicAdd(&(d_spx_data[spx_index].b_acc), d_pix_data[pix_index].b);
+        atomicAdd(&(d_spx_data[spx_index].num), 1);
+    }
+}
+
 __global__ void k_averaging(spx_data* d_spx_data)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
