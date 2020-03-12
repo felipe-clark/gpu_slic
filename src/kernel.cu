@@ -31,7 +31,7 @@ __global__ void k_cumulativeCount(const pix_data* d_pix_data, const own_data* d_
 
 __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data* d_own_data, spx_data* d_spx_data)
 {
-    __shared__ float acc[4][3][3][32][32]; //LAB+count, 3x3 neighbors, 32x32 values
+    __shared__ short acc[4][3][3][16][32]; //LAB+count, 3x3 neighbors, 32x32 values
 
     int tidx=threadIdx.x;
     int tidy=threadIdx.y;
@@ -47,27 +47,60 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     int j = d_own_data[pix_index].j;
     int nx = (i<i_center) ? 0 : ((i>i_center) ? 2 : 1);
     int ny = (j<j_center) ? 0 : ((j>j_center) ? 2 : 1);
-    acc[0][nx][ny][tidx][tidy] = d_pix_data[pix_index].l; 
-    acc[1][nx][ny][tidx][tidy] = d_pix_data[pix_index].a; 
-    acc[2][nx][ny][tidx][tidy] = d_pix_data[pix_index].b; 
-    acc[3][nx][ny][tidx][tidy] = 1; 
-    
+    acc[0][ny][nx][tidy][tidx] = d_pix_data[pix_index].l; 
+    acc[1][ny][nx][tidy][tidx] = d_pix_data[pix_index].a; 
+    acc[2][ny][nx][tidy][tidx] = d_pix_data[pix_index].b; 
+    acc[3][ny][nx][tidy][tidx] = 1; 
+   
     __syncthreads();
 
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-
-    if (y < pix_height && x < pix_width) 
+    // Collapse over X
+    for (int step=1; step<32; step *= 2)
     {
-        int pix_index = y * pix_width + x;
-        int i = d_own_data[pix_index].i;
-        int j = d_own_data[pix_index].j;
-        int spx_index = j * spx_width + i;
+        if (tidx % (2*step) == 0)
+        {
+            for (int ny=0; ny<3; ny++)
+            for (int nx=0; nx<3; nx++)
+            for (int c=0; c<4; c++)
+            acc[c][ny][nx][tidy][tidx] += acc[c][ny][nx][tidy][tidx + step];
+        }
+    }
 
-        atomicAdd(&(d_spx_data[spx_index].l_acc), d_pix_data[pix_index].l);
-        atomicAdd(&(d_spx_data[spx_index].a_acc), d_pix_data[pix_index].a);
-        atomicAdd(&(d_spx_data[spx_index].b_acc), d_pix_data[pix_index].b);
-        atomicAdd(&(d_spx_data[spx_index].num), 1);
+    // Is this ok? See https://stackoverflow.com/questions/6666382/can-i-use-syncthreads-after-having-dropped-threads
+    // TODO: Use these threads for nx, ny, c loop
+    if (tidy != 0) return;
+    __syncthreads();
+
+    if (tidx>=16) return;
+    for (int step=1; step<16; step *= 2)
+    {
+        if (tidx % (2*step) == 0)
+        {
+            for (int ny=0; ny<3; ny++)
+            for (int nx=0; nx<3; nx++)
+            for (int c=0; c<4; c++)
+            acc[c][ny][nx][tidx][0] += acc[c][ny][nx][tidx + step][0];
+        }
+    }
+
+    // Now, acc[c][ny][nx][0][0] has the values we need
+    // but where do we write them to?
+    
+    // Just one warp so no syncThreads (TODO)
+    if (tidx != 0) return;
+
+    for (int ny=0; ny<3; ny++)
+    {
+        int j = j_center + ny - 1;
+        for (int nx=0; nx<3; nx++)
+        {
+            int i = i_center + nx - 1;
+            int spx_index = j * spx_width + i; 
+            atomicAdd(&(d_spx_data[spx_index].l_acc), acc[0][ny][nx][0][0]);
+            atomicAdd(&(d_spx_data[spx_index].a_acc), acc[1][ny][nx][0][0]);
+            atomicAdd(&(d_spx_data[spx_index].b_acc), acc[2][ny][nx][0][0]);
+            atomicAdd(&(d_spx_data[spx_index].num),   acc[3][ny][nx][0][0]);
+        }
     }
 }
 
