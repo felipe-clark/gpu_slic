@@ -71,13 +71,14 @@ int main(int argc, char** argv)
 
     // -------------------- The Kernel magic --------------------
 
-    dim3 pix_threadsPerBlock( 32, 32 ) ;
+    dim3 pix_threadsPerBlock( 32, 8 ) ; //TODO
     int pix_blockPerGridX = (pix_width + pix_threadsPerBlock.x-1)/pix_threadsPerBlock.x;
     int pix_blockPerGridY = (pix_height + pix_threadsPerBlock.y-1)/pix_threadsPerBlock.y;
     dim3 pix_blocksPerGrid(pix_blockPerGridX, pix_blockPerGridY, 1);
 
     //k_ownership<<<pix_blocksPerGrid, pix_threadsPerBlock>>>(d_pix_data, d_own_data, d_spx_data);
     k_cumulativeCount<<<pix_blocksPerGrid, pix_threadsPerBlock>>>(d_pix_data, d_own_data, d_spx_data);
+    printf("1\n"); cudaDeviceSynchronize(); //TODO
 
     dim3 spx_threadsPerBlock(32, 32);
     int spx_blockPerGridX = (spx_width + spx_threadsPerBlock.x-1)/spx_threadsPerBlock.x;
@@ -91,6 +92,7 @@ int main(int argc, char** argv)
         k_reset<<<spx_blocksPerGrid, spx_threadsPerBlock>>>(d_spx_data);
         k_ownership<<<pix_blocksPerGrid, pix_threadsPerBlock>>>(d_pix_data, d_own_data, d_spx_data);
         k_cumulativeCount<<<pix_blocksPerGrid, pix_threadsPerBlock>>>(d_pix_data, d_own_data, d_spx_data);
+	printf("2\n"); cudaDeviceSynchronize(); //TODO
         k_averaging<<<spx_blocksPerGrid, spx_threadsPerBlock>>>(d_spx_data);
     }
 
@@ -104,6 +106,7 @@ int main(int argc, char** argv)
 
     k_reset<<<spx_blocksPerGrid, spx_threadsPerBlock>>>(d_spx_data);
     k_cumulativeCount<<<pix_blocksPerGrid, pix_threadsPerBlock>>>(d_pix_data, d_own_data, d_spx_data);
+    printf("3\n"); cudaDeviceSynchronize(); //TODO
     k_averaging<<<spx_blocksPerGrid, spx_threadsPerBlock>>>(d_spx_data);
 
     cudaMemcpy(m_lab_image.data, d_pix_data, pix_byte_size, cudaMemcpyDeviceToHost);
@@ -118,6 +121,7 @@ int main(int argc, char** argv)
     cv::cvtColor(m_lab_image, m_rgb_result_image, cv::COLOR_Lab2BGR);
     cv::imwrite("./processed_image.jpg", m_rgb_result_image);
 
+    cudaDeviceSynchronize();
     cudaDeviceReset();
     printf("SUCCESS!\n");
 }

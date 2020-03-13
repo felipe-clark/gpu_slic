@@ -10,8 +10,13 @@ void initializeSlicFactor()
     cudaError_t cudaStatus = cudaMemcpyToSymbol(slic_factor, slic_factor_hp, sizeof(float));
 }
 
-__global__ void k_cumulativeCount(const pix_data* d_pix_data, const own_data* d_own_data, spx_data* d_spx_data)
+__global__ void k_cumulativeCountOrig(const pix_data* d_pix_data, const own_data* d_own_data, spx_data* d_spx_data)
 {
+    if (threadIdx.x == 0 && threadIdx.y == 0 && blockIdx.x == 0 && blockIdx.y == 0)
+    {
+	    printf("k\n");
+    }
+
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -31,17 +36,22 @@ __global__ void k_cumulativeCount(const pix_data* d_pix_data, const own_data* d_
 
 __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data* d_own_data, spx_data* d_spx_data)
 {
-    __shared__ short acc[4][3][3][16][32]; //LAB+count, 3x3 neighbors, 32x32 values
+    //if (threadIdx.x == 0 && threadIdx.y == 0 && blockIdx.x == 0 && blockIdx.y == 0)
+    //{
+	    //printf("K\n");
+    //}
+
+    __shared__ unsigned short acc[4][3][3][8][32]; //LAB+count, 3x3 neighbors, 32x32 values
 
     int tidx=threadIdx.x;
     int tidy=threadIdx.y;
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
 
-    for (int nx=0;nx<3;++nx) for (int ny=0;ny<3;++ny) for(int c=0;c<4;++c) acc[c][nx][ny][tidx][tidy]=0;
+    for (int nx=0;nx<3;++nx) for (int ny=0;ny<3;++ny) for(int c=0;c<4;++c) acc[c][ny][nx][tidy][tidx]=0;
 
-    int i_center = x / spx_size;
-    int j_center = y / spx_size;
+    int i_center = blockIdx.x * blockDim.x / spx_size;
+    int j_center = blockIdx.y * blockDim.y / spx_size;
     int pix_index = y * pix_width + x;
     int i = d_own_data[pix_index].i;
     int j = d_own_data[pix_index].j;
@@ -71,8 +81,8 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     if (tidy != 0) return;
     __syncthreads();
 
-    if (tidx>=16) return;
-    for (int step=1; step<16; step *= 2)
+    if (tidx>=8) return;
+    for (int step=1; step<8; step *= 2)
     {
         if (tidx % (2*step) == 0)
         {
@@ -92,14 +102,27 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     for (int ny=0; ny<3; ny++)
     {
         int j = j_center + ny - 1;
+	if (j<0 || j>=spx_height) continue;
         for (int nx=0; nx<3; nx++)
         {
             int i = i_center + nx - 1;
-            int spx_index = j * spx_width + i; 
-            atomicAdd(&(d_spx_data[spx_index].l_acc), acc[0][ny][nx][0][0]);
-            atomicAdd(&(d_spx_data[spx_index].a_acc), acc[1][ny][nx][0][0]);
-            atomicAdd(&(d_spx_data[spx_index].b_acc), acc[2][ny][nx][0][0]);
-            atomicAdd(&(d_spx_data[spx_index].num),   acc[3][ny][nx][0][0]);
+            if (i<0 || i>=spx_width) continue;
+
+            int spx_index = j * spx_width + i;
+
+	    //if (blockIdx.x ==0 && blockIdx.y == 0)
+	    //printf("A:%d %d %d %u %u %u %u\n", i_center, j_center, spx_index, acc[0][ny][nx][0][0], acc[1][ny][nx][0][0], acc[2][ny][nx][0][0], acc[3][ny][nx][0][0]); 
+            
+	    atomicAdd(&(d_spx_data[spx_index].l_acc),  (int)acc[0][ny][nx][0][0]);
+            atomicAdd(&(d_spx_data[spx_index].a_acc),  (int)acc[1][ny][nx][0][0]);
+            atomicAdd(&(d_spx_data[spx_index].b_acc), (int)acc[2][ny][nx][0][0]);
+            atomicAdd(&(d_spx_data[spx_index].num), (int)acc[3][ny][nx][0][0]);
+	    
+	    //if (blockIdx.x==0 && blockIdx.y==0)
+	    //{
+	       //printf("C:%u %u %u %u\n", d_spx_data[spx_index].l_acc, d_spx_data[spx_index].a_acc, d_spx_data[spx_index].b_acc, d_spx_data[spx_index].num); 
+	       //printf("J\n");
+	    //}
         }
     }
 }
