@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <opencv2/opencv.hpp>
 #include "../include/slic.h"
+#include <sys/time.h>
 
 int main(int argc, char** argv)
 {
@@ -87,14 +88,20 @@ int main(int argc, char** argv)
 
     k_averaging<<<spx_blocksPerGrid, spx_threadsPerBlock>>>(d_spx_data);
 
-    for (int i = 0 ; i<10; i++)
+    const int iterations = 300;
+    cudaDeviceSynchronize();
+    double ts_start = getTimestamp();
+    for (int i = 0 ; i<iterations; i++)
     {
         k_reset<<<spx_blocksPerGrid, spx_threadsPerBlock>>>(d_spx_data);
         k_ownership<<<pix_blocksPerGrid, pix_threadsPerBlock>>>(d_pix_data, d_own_data, d_spx_data);
         k_cumulativeCount<<<pix_blocksPerGrid, pix_threadsPerBlock>>>(d_pix_data, d_own_data, d_spx_data);
-	printf("2\n"); cudaDeviceSynchronize(); //TODO
+	//printf("2\n"); cudaDeviceSynchronize(); //TODO
         k_averaging<<<spx_blocksPerGrid, spx_threadsPerBlock>>>(d_spx_data);
     }
+    cudaDeviceSynchronize();
+    double ts_end = getTimestamp();
+    printf("Average time %0.9f, total %0.9f iters %d\n", (ts_end - ts_start)/iterations, (ts_end - ts_start), iterations);
 
     cudaMemcpy(m_lab_image.data, d_pix_data, pix_byte_size, cudaMemcpyDeviceToHost);
     cudaMemcpy(h_own_data, d_own_data, own_byte_size, cudaMemcpyDeviceToHost);
@@ -239,4 +246,11 @@ void color_borders(pix_data* h_pix_data, const own_data* h_own_data, const spx_d
             }
         }
     }
+}
+
+double getTimestamp()
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (double) tv.tv_usec/1000000.0 + tv.tv_sec;
 }

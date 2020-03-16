@@ -91,7 +91,7 @@ void enforce_label_connectivity(own_data* o_own_data, const int width,
     const int height, own_data* n_own_data, int n_spx);
 
 // Kernels
-#define k_cumulativeCount k_cumulativeCountOpt1
+#define k_cumulativeCount k_cumulativeCountOrig
 __global__ void k_cumulativeCountOrig(const pix_data* d_pix_data, const own_data* d_own_data, spx_data* d_spx_data);
 __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data* d_own_data, spx_data* d_spx_data);
 __global__ void k_averaging(spx_data* d_spx_data);
@@ -106,5 +106,8 @@ void color_borders(pix_data* h_pix_data, const own_data* h_own_data, const spx_d
 // Test Colorizers
 void test_color_own(pix_data* h_pix_data, const own_data* h_own_data, const spx_data* h_spx_data);
 void test_color_spx(pix_data* h_pix_data, const own_data* h_own_data, const spx_data* h_spx_data);
+
+// Other
+double getTimestamp();
 
 #endif
