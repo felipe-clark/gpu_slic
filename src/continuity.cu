@@ -20,7 +20,7 @@ void enforce_label_connectivity(own_data* o_own_data, const int width,
 		{
 			if(!n_own_data[oindex].isValid())
 			{
-                n_own_data[oindex].setLabel(label);
+                                n_own_data[oindex].setLabel(label);
 				//--------------------
 				// Start a new segment
 				//--------------------
@@ -67,7 +67,7 @@ void enforce_label_connectivity(own_data* o_own_data, const int width,
 				// If segment size is less then a limit, assign an
 				// adjacent label found before, and decrement label count.
 				//-------------------------------------------------------
-				if(count <= SUPSZ >> 2)
+				if((label == n_spx) || (count <= SUPSZ >> 2))
 				{
 					for( int c = 0; c < count; c++ )
 					{
