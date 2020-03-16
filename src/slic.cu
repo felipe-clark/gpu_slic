@@ -100,12 +100,20 @@ int main(int argc, char** argv)
     cudaMemcpy(h_own_data, d_own_data, own_byte_size, cudaMemcpyDeviceToHost);
     cudaMemcpy(h_spx_data, d_spx_data, spx_byte_size, cudaMemcpyDeviceToHost);
 
-    enforce_label_connectivity(h_own_data, pix_width, pix_height, h_n_own_data, spx_width * spx_height);
-
-    cudaMemcpy(d_own_data, h_n_own_data, own_byte_size, cudaMemcpyHostToDevice);
+    const bool doConnectivity = true;
+    if (doConnectivity)
+    {
+        enforce_label_connectivity(h_own_data, pix_width, pix_height, h_n_own_data, spx_width * spx_height);
+        cudaMemcpy(d_own_data, h_n_own_data, own_byte_size, cudaMemcpyHostToDevice);
+    }
+    else
+    {
+        // NO-OP
+    }
 
     k_reset<<<spx_blocksPerGrid, spx_threadsPerBlock>>>(d_spx_data);
-    k_cumulativeCount<<<pix_blocksPerGrid, pix_threadsPerBlock>>>(d_pix_data, d_own_data, d_spx_data);
+    // Has to be original cumulativeCount, because we can't assume window size of 1 after conn. enforcement
+    k_cumulativeCountOrig<<<pix_blocksPerGrid, pix_threadsPerBlock>>>(d_pix_data, d_own_data, d_spx_data);
     printf("3\n"); cudaDeviceSynchronize(); //TODO
     k_averaging<<<spx_blocksPerGrid, spx_threadsPerBlock>>>(d_spx_data);
 
@@ -114,7 +122,7 @@ int main(int argc, char** argv)
     cudaMemcpy(h_spx_data, d_spx_data, spx_byte_size, cudaMemcpyDeviceToHost);
 
     color_solid((pix_data*)m_lab_image.data, h_own_data, h_spx_data);
-    color_borders((pix_data*)m_lab_image.data, h_n_own_data, h_spx_data);
+    //color_borders((pix_data*)m_lab_image.data, h_own_data, h_spx_data);
     //test_color_own((pix_data*)m_lab_image.data, h_own_data, h_spx_data);
 
     cv::Mat m_rgb_result_image;

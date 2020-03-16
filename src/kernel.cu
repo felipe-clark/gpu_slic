@@ -41,7 +41,9 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
 	    //printf("K\n");
     //}
 
-    __shared__ unsigned short acc[4][3][3][8][32]; //LAB+count, 3x3 neighbors, 32x32 values
+    // If we do 16 instead of 8, only have enough memory for a short, not an int,
+    // and 16*32*255 does not fit in a short
+    __shared__ int acc[4][3][3][8][32]; //LAB+count, 3x3 neighbors, 32x32 values
 
     int tidx=threadIdx.x;
     int tidy=threadIdx.y;
