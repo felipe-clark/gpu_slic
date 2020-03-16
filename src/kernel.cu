@@ -41,7 +41,7 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
 	    //printf("K\n");
     //}
 
-    __shared__ unsigned short acc[4][3][3][8][32]; //LAB+count, 3x3 neighbors, 32x32 values
+    __shared__ unsigned short acc[4][3][3][8][32]; //LAB+count, 3x3 neighbors, 8x32 values
 
     int tidx=threadIdx.x;
     int tidy=threadIdx.y;
@@ -57,10 +57,10 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     int j = d_own_data[pix_index].j;
     int nx = (i<i_center) ? 0 : ((i>i_center) ? 2 : 1);
     int ny = (j<j_center) ? 0 : ((j>j_center) ? 2 : 1);
-    acc[0][ny][nx][tidy][tidx] = d_pix_data[pix_index].l; 
-    acc[1][ny][nx][tidy][tidx] = d_pix_data[pix_index].a; 
-    acc[2][ny][nx][tidy][tidx] = d_pix_data[pix_index].b; 
-    acc[3][ny][nx][tidy][tidx] = 1; 
+    acc[0][ny][nx][tidy][tidx] = d_pix_data[pix_index].l;
+    acc[1][ny][nx][tidy][tidx] = d_pix_data[pix_index].a;
+    acc[2][ny][nx][tidy][tidx] = d_pix_data[pix_index].b;
+    acc[3][ny][nx][tidy][tidx] = 1;
    
     __syncthreads();
 
@@ -82,6 +82,7 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     __syncthreads();
 
     if (tidx>=8) return;
+    // Collapse over Y
     for (int step=1; step<8; step *= 2)
     {
         if (tidx % (2*step) == 0)
@@ -110,13 +111,14 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
 
             int spx_index = j * spx_width + i;
 
+
 	    //if (blockIdx.x ==0 && blockIdx.y == 0)
 	    //printf("A:%d %d %d %u %u %u %u\n", i_center, j_center, spx_index, acc[0][ny][nx][0][0], acc[1][ny][nx][0][0], acc[2][ny][nx][0][0], acc[3][ny][nx][0][0]); 
             
-	    atomicAdd(&(d_spx_data[spx_index].l_acc),  (int)acc[0][ny][nx][0][0]);
-            atomicAdd(&(d_spx_data[spx_index].a_acc),  (int)acc[1][ny][nx][0][0]);
+	    atomicAdd(&(d_spx_data[spx_index].l_acc), (int)acc[0][ny][nx][0][0]);
+            atomicAdd(&(d_spx_data[spx_index].a_acc), (int)acc[1][ny][nx][0][0]);
             atomicAdd(&(d_spx_data[spx_index].b_acc), (int)acc[2][ny][nx][0][0]);
-            atomicAdd(&(d_spx_data[spx_index].num), (int)acc[3][ny][nx][0][0]);
+            atomicAdd(&(d_spx_data[spx_index].num),   (int)acc[3][ny][nx][0][0]);
 	    
 	    //if (blockIdx.x==0 && blockIdx.y==0)
 	    //{
@@ -212,7 +214,6 @@ __global__ void k_reset(spx_data* d_spx_data)
         int spx_index = j * spx_width + i;
         d_spx_data[spx_index].l_acc = 0;
         d_spx_data[spx_index].a_acc = 0;
-        d_spx_data[spx_index].b_acc = 0;
         d_spx_data[spx_index].num = 0;
     }
 }
