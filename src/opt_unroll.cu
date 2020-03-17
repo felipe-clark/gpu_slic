@@ -66,25 +66,48 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
    
     __syncthreads();
 
-    // Collapse over X and Y
-    int tid = tidy * blockDim.x + tidx;
-    for (int step=1; step<32*8; step *= 2)
-    {
-        if (tid % (2*step) == 0)
-        {
-            for (int ny=0; ny<3; ny++)
-            for (int nx=0; nx<3; nx++)
-            for (int c=0; c<4; c++)
-            {
-                *((int*)acc[c][ny][nx] + tid) += *((int*)acc[c][ny][nx] + tid + step);
-            }
-        }
-    }
+    // Collapse over X
+    // Step 1
+    if (tidy>=4) return;
+    x = tidx / 2;
+    y = (tidx % 2) * 4 + tidy;
+    for (int ny=0; ny<3; ny++) for (nx=0; nx<3; nx++) for (int c=0; c<4; c++)
+        acc[c][ny][nx][y][x] += acc[c][ny][nx][y][x+1];
+    // Step 2
+    if (tidy>=2) return;
+    x = tidx / 4;
+    y = (tidx % 4) * 2 + tidy;
+    for (int ny=0; ny<3; ny++) for (nx=0; nx<3; nx++) for (int c=0; c<4; c++)
+        acc[c][ny][nx][y][x] += acc[c][ny][nx][y][x+2];
+    // Step 4
+    if (tidy>=1) return;
+    x = tidx / 8;
+    y = tidx % 8;
+    for (int ny=0; ny<3; ny++) for (nx=0; nx<3; nx++) for (int c=0; c<4; c++)
+        acc[c][ny][nx][y][x] += acc[c][ny][nx][y][x+4];
+    // Step 8
+    x = tidx / 16;
+    if ((tidx / 8) % 2 == 0)
+    for (int ny=0; ny<3; ny++) for (nx=0; nx<3; nx++) for (int c=0; c<4; c++)
+        acc[c][ny][nx][y][x] += acc[c][ny][nx][y][x+8];
 
     // Is this ok? See https://stackoverflow.com/questions/6666382/can-i-use-syncthreads-after-having-dropped-threads
     // TODO: Use these threads for nx, ny, c loop
     if (tidy != 0) return;
     __syncthreads();
+
+    if (tidx>=8) return;
+    // Collapse over Y
+    for (int step=1; step<8; step *= 2)
+    {
+        if (tidx % (2*step) == 0)
+        {
+            for (int ny=0; ny<3; ny++)
+            for (int nx=0; nx<3; nx++)
+            for (int c=0; c<4; c++)
+            acc[c][ny][nx][tidx][0] += acc[c][ny][nx][tidx + step][0];
+        }
+    }
 
     // Now, acc[c][ny][nx][0][0] has the values we need
     // but where do we write them to?
@@ -206,7 +229,6 @@ __global__ void k_reset(spx_data* d_spx_data)
         int spx_index = j * spx_width + i;
         d_spx_data[spx_index].l_acc = 0;
         d_spx_data[spx_index].a_acc = 0;
-	d_spx_data[spx_index].b_acc = 0;
         d_spx_data[spx_index].num = 0;
     }
 }

@@ -206,7 +206,6 @@ __global__ void k_reset(spx_data* d_spx_data)
         int spx_index = j * spx_width + i;
         d_spx_data[spx_index].l_acc = 0;
         d_spx_data[spx_index].a_acc = 0;
-	d_spx_data[spx_index].b_acc = 0;
         d_spx_data[spx_index].num = 0;
     }
 }

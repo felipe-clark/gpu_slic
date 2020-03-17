@@ -88,7 +88,7 @@ int main(int argc, char** argv)
 
     k_averaging<<<spx_blocksPerGrid, spx_threadsPerBlock>>>(d_spx_data);
 
-    const int iterations = 300;
+    const int iterations = 10;
     cudaDeviceSynchronize();
     double ts_start = getTimestamp();
     for (int i = 0 ; i<iterations; i++)
