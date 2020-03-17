@@ -68,19 +68,120 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
 
     // Collapse over X and Y
     int tid = tidy * blockDim.x + tidx;
-    for (int step=32*8/2; step>0; step /= 2)
+    
+    // Step 128
+    int index = tid % 128;
+    int c_opt = (tid / 128) * 2; //0 or 2
+    for (int ny=0; ny<3; ny++)
+    for (int nx=0; nx<3; nx++)
+    for (int c=0; c<2; c++)
     {
-        if (tid < step)
-        {
-            for (int ny=0; ny<3; ny++)
-            for (int nx=0; nx<3; nx++)
-            for (int c=0; c<4; c++)
-            {
-                *((int*)acc[c][ny][nx] + tid) += *((int*)acc[c][ny][nx] + tid + step);
-            }
-        }
-	__syncthreads();
+        *((int*)acc[c+c_opt][ny][nx] + index) += *((int*)acc[c+c_opt][ny][nx] + index + 128);
     }
+    __syncthreads();
+
+    // Step 64
+    index = tid % 64;
+    int c = (tid / 64); // 0,1,2,3
+    for (int ny=0; ny<3; ny++)
+    for (int nx=0; nx<3; nx++)
+    {
+        *((int*)acc[c][ny][nx] + index) += *((int*)acc[c][ny][nx] + index + 64);
+    }
+    __syncthreads();
+
+    // Step 32
+    index = tid % 32;
+    int opt = (tid / 32); // 0-7
+    c = opt % 4; //0..3
+    opt = opt / 4; //0..1
+    for (int nn=0; nn<5; nn++)
+    {
+	int coord = nn*2 + opt;
+	if (coord <= 8)
+	{
+	    int nx = coord % 3;
+	    int ny = coord / 3;
+            *((int*)acc[opt][ny][nx] + index) += *((int*)acc[opt][ny][nx] + index + 32);
+	}
+    }
+    __syncthreads();
+
+    // Step 16
+    index = tid % 16;
+    opt = (tid / 16); // 0-15
+    c = opt % 4; //0..3
+    opt = opt / 4; //0..3
+    for (int nn=0; nn<3; nn++)
+    {
+	int coord = nn*4 + opt;
+	if (coord <= 8)
+	{
+	    int nx = coord % 3;
+	    int ny = coord / 3;
+            *((int*)acc[opt][ny][nx] + index) += *((int*)acc[opt][ny][nx] + index + 16);
+	}
+    }
+    __syncthreads();
+
+    // Step 8 
+    index = tid % 8;
+    opt = (tid / 8); // 0-31
+    c = opt % 4; //0..3
+    opt = opt / 4; //0..7
+    for (int nn=0; nn<2; nn++)
+    {
+	int coord = nn*7 + opt;
+	if (coord <= 8)
+	{
+	    int nx = coord % 3;
+	    int ny = coord / 3;
+            *((int*)acc[opt][ny][nx] + index) += *((int*)acc[opt][ny][nx] + index + 8);
+	}
+    }
+    __syncthreads();
+
+    // Step 4 
+    index = tid % 4;
+    opt = (tid / 4); // 0-63
+    c = opt % 4; //0..3
+    opt = opt / 4; //0..15
+	int coord = opt;
+	if (coord <= 8)
+	{
+	    int nx = coord % 3;
+	    int ny = coord / 3;
+            *((int*)acc[opt][ny][nx] + index) += *((int*)acc[opt][ny][nx] + index + 4);
+	}
+	__syncthreads();
+
+    // Step 2 
+    index = tid % 2;
+    opt = (tid / 2); // 0-127
+    c = opt % 4; //0..3
+    opt = opt / 4; //0..31
+	coord = opt;
+	if (coord <= 8)
+	{
+	    int nx = coord % 3;
+	    int ny = coord / 3;
+            *((int*)acc[opt][ny][nx] + index) += *((int*)acc[opt][ny][nx] + index + 2);
+	}
+	__syncthreads();
+
+    // Step 1 
+    opt = tid; // 0-255
+    c = opt % 4; //0..3
+    opt = opt / 4; //0..63
+	coord = opt;
+	if (coord <= 8)
+	{
+	    int nx = coord % 3;
+	    int ny = coord / 3;
+            *((int*)acc[opt][ny][nx] + 0) += *((int*)acc[opt][ny][nx] + 0 + 1);
+	}
+	__syncthreads();
+
 
     // Is this ok? See https://stackoverflow.com/questions/6666382/can-i-use-syncthreads-after-having-dropped-threads
     // TODO: Use these threads for nx, ny, c loop
