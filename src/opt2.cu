@@ -79,12 +79,12 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
                 *((int*)acc[c][ny][nx] + tid) += *((int*)acc[c][ny][nx] + tid + step);
             }
         }
+	__syncthreads();
     }
 
     // Is this ok? See https://stackoverflow.com/questions/6666382/can-i-use-syncthreads-after-having-dropped-threads
     // TODO: Use these threads for nx, ny, c loop
     if (tidy != 0) return;
-    __syncthreads();
 
     // Now, acc[c][ny][nx][0][0] has the values we need
     // but where do we write them to?
