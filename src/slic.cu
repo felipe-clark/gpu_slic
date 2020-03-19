@@ -96,7 +96,7 @@ int main(int argc, char** argv)
         k_reset<<<spx_blocksPerGrid, spx_threadsPerBlock>>>(d_spx_data);
         k_ownership<<<pix_blocksPerGrid, pix_threadsPerBlock>>>(d_pix_data, d_own_data, d_spx_data);
         k_cumulativeCount<<<pix_blocksPerGrid, pix_threadsPerBlock>>>(d_pix_data, d_own_data, d_spx_data);
-	//printf("2\n"); cudaDeviceSynchronize(); //TODO
+	//printf("REMOVE THIS BEFORE MEASURING\n"); cudaDeviceSynchronize(); //TODO
         k_averaging<<<spx_blocksPerGrid, spx_threadsPerBlock>>>(d_spx_data);
     }
     cudaDeviceSynchronize();

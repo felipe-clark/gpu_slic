@@ -36,18 +36,14 @@ __global__ void k_cumulativeCountOrig(const pix_data* d_pix_data, const own_data
 
 __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data* d_own_data, spx_data* d_spx_data)
 {
-    bool debug = false;
-    if (threadIdx.x == 0 && threadIdx.y == 0 && blockIdx.x == 0 && blockIdx.y == 0)
-    {
-	    debug = true;
+    //if (threadIdx.x == 0 && threadIdx.y == 0 && blockIdx.x == 0 && blockIdx.y == 0)
+    //{
 	    //printf("K\n");
-    }
+    //}
 
     // If we do 16 instead of 8, only have enough memory for a short, not an int,
     // and 16*32*255 does not fit in a short
     __shared__ int acc[4][3][3][8][32]; //LAB+count, 3x3 neighbors, 8x32 values
-    const int arraySize = 4 * 3 * 3;
-    const int dimensions = 8 * 32;
 
     int tidx=threadIdx.x;
     int tidy=threadIdx.y;
@@ -70,44 +66,122 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
    
     __syncthreads();
 
-    int* accptr = (int*)acc;
-
     // Collapse over X and Y
     int tid = tidy * blockDim.x + tidx;
-    for (int step=32*8/2; step>0; step /= 2)
+    
+    // Step 128
+    int index = tid % 128;
+    int c_opt = (tid / 128) * 2; //0 or 2
+    for (int ny=0; ny<3; ny++)
+    for (int nx=0; nx<3; nx++)
+    for (int c=0; c<2; c++)
     {
-	// step = 32 dimensions = 256 arraySize = 36
-	int locationIndex = tid % step; // 0..31
-	int threadGroup = tid / step; // 0..7
-	int maxThreadGroup = dimensions / step; // 8
-	int maxLoopIndex = (arraySize + maxThreadGroup - 1) / maxThreadGroup; // 43/8 = 5
-
-	/*
-	if (step <= 16)
-	{
-            maxThreadGroup = 1;
-	    maxLoopIndex = 36;
-	    if (threadGroup>0) continue;
-	}
-	else if (step == 32)
-	{
-            if (debug) printf("STEP 32: maxT %d, maxL %d, tg %d, loc %d\n", maxThreadGroup, maxLoopIndex, threadGroup, locationIndex);   
-	}*/
-
-	// Divide arraySize (3*3*4=36) by max threadGroup + 1 (i.e. 8) and that's the loop
-	// Actual a = loop index * (max threadGroup + 1) + innerIndex
-
-	//if (debug) printf("s:%d loc:%d maxT:%d maxL:%d \n", step, locationIndex, maxThreadGroup, maxLoopIndex);
-	for (int loopIndex=0; loopIndex<maxLoopIndex; loopIndex++)
-        {
-	    int innerIndex = loopIndex * maxThreadGroup + threadGroup; //0 8 16 24 32 + (0..7) --> 0..39
-	    if (innerIndex >= arraySize) continue; 
-	    //if (debug && loopIndex==16) printf("s:%d loc:%d maxT:%d maxL:%d i:%d A:%d B:%d \n", step, locationIndex, maxThreadGroup, maxLoopIndex, innerIndex, innerIndex*dimensions + locationIndex, innerIndex*dimensions+locationIndex+step);
-            *(accptr + (innerIndex*dimensions + locationIndex)) += 
-                *(accptr + (innerIndex*dimensions + locationIndex + step));
-        }
-	__syncthreads();
+        *((int*)acc[c+c_opt][ny][nx] + index) += *((int*)acc[c+c_opt][ny][nx] + index + 128);
     }
+    __syncthreads();
+
+    // Step 64
+    index = tid % 64;
+    int c = (tid / 64); // 0,1,2,3
+    for (int ny=0; ny<3; ny++)
+    for (int nx=0; nx<3; nx++)
+    {
+        *((int*)acc[c][ny][nx] + index) += *((int*)acc[c][ny][nx] + index + 64);
+    }
+    __syncthreads();
+
+    // Step 32
+    index = tid % 32;
+    int opt = (tid / 32); // 0-7
+    c = opt % 4; //0..3
+    opt = opt / 4; //0..1
+    for (int nn=0; nn<5; nn++)
+    {
+	int coord = nn*2 + opt;
+	if (coord <= 8)
+	{
+	    int nx = coord % 3;
+	    int ny = coord / 3;
+            *((int*)acc[opt][ny][nx] + index) += *((int*)acc[opt][ny][nx] + index + 32);
+	}
+    }
+    __syncthreads();
+
+    // Step 16
+    index = tid % 16;
+    opt = (tid / 16); // 0-15
+    c = opt % 4; //0..3
+    opt = opt / 4; //0..3
+    for (int nn=0; nn<3; nn++)
+    {
+	int coord = nn*4 + opt;
+	if (coord <= 8)
+	{
+	    int nx = coord % 3;
+	    int ny = coord / 3;
+            *((int*)acc[opt][ny][nx] + index) += *((int*)acc[opt][ny][nx] + index + 16);
+	}
+    }
+    __syncthreads();
+
+    // Step 8 
+    index = tid % 8;
+    opt = (tid / 8); // 0-31
+    c = opt % 4; //0..3
+    opt = opt / 4; //0..7
+    for (int nn=0; nn<2; nn++)
+    {
+	int coord = nn*7 + opt;
+	if (coord <= 8)
+	{
+	    int nx = coord % 3;
+	    int ny = coord / 3;
+            *((int*)acc[opt][ny][nx] + index) += *((int*)acc[opt][ny][nx] + index + 8);
+	}
+    }
+    __syncthreads();
+
+    // Step 4 
+    index = tid % 4;
+    opt = (tid / 4); // 0-63
+    c = opt % 4; //0..3
+    opt = opt / 4; //0..15
+	int coord = opt;
+	if (coord <= 8)
+	{
+	    int nx = coord % 3;
+	    int ny = coord / 3;
+            *((int*)acc[opt][ny][nx] + index) += *((int*)acc[opt][ny][nx] + index + 4);
+	}
+	__syncthreads();
+
+    // Step 2 
+    index = tid % 2;
+    opt = (tid / 2); // 0-127
+    c = opt % 4; //0..3
+    opt = opt / 4; //0..31
+	coord = opt;
+	if (coord <= 8)
+	{
+	    int nx = coord % 3;
+	    int ny = coord / 3;
+            *((int*)acc[opt][ny][nx] + index) += *((int*)acc[opt][ny][nx] + index + 2);
+	}
+	__syncthreads();
+
+    // Step 1 
+    opt = tid; // 0-255
+    c = opt % 4; //0..3
+    opt = opt / 4; //0..63
+	coord = opt;
+	if (coord <= 8)
+	{
+	    int nx = coord % 3;
+	    int ny = coord / 3;
+            *((int*)acc[opt][ny][nx] + 0) += *((int*)acc[opt][ny][nx] + 0 + 1);
+	}
+	__syncthreads();
+
 
     // Is this ok? See https://stackoverflow.com/questions/6666382/can-i-use-syncthreads-after-having-dropped-threads
     // TODO: Use these threads for nx, ny, c loop
