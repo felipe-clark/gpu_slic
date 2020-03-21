@@ -55,6 +55,8 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     int sy = y % 8;
 
     //int cc = threadIdx.y % 2; //See Opt6 (use in loop below)
+    //Guaranteed no bank conflicts here (regardless of Opt6 or not),
+    //because the last array index (sx) is the ID of the thread within the warp.
     for (int nx=0;nx<3;++nx) for (int ny=0;ny<3;++ny) for(int c=0; c<4; ++c) acc[c][ny][nx][sy][sx]=0;
 
     //If using Opt6 need to sync here
@@ -71,6 +73,9 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
         int j = d_own_data[pix_index].j;
         int nx = (i<i_center) ? 0 : ((i>i_center) ? 2 : 1);
         int ny = (j<j_center) ? 0 : ((j>j_center) ? 2 : 1);
+	// Guaranteed no SMEM bank conflicts (last index sx is thread ID within warp)
+	// GMEM, no Opt6: A single warp reads consecutive pix_index values and the l/a/b are chars,
+	// so should be coalesced.
         acc[0][ny][nx][sy][sx] = d_pix_data[pix_index].l;
         acc[1][ny][nx][sy][sx] = d_pix_data[pix_index].a;
         acc[2][ny][nx][sy][sx] = d_pix_data[pix_index].b;
