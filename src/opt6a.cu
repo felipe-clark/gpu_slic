@@ -50,22 +50,20 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     const int dimensions = 8 * 32;
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = (blockIdx.y * blockDim.y + threadIdx.y) / 1; //See Opt6
+    int y = (blockIdx.y * blockDim.y + threadIdx.y) / 2;
     int sx = threadIdx.x;
     int sy = y % 8;
+    int cc = threadIdx.y % 2;
 
-    //int cc = threadIdx.y % 2; //See Opt6 (use in loop below)
-    for (int nx=0;nx<3;++nx) for (int ny=0;ny<3;++ny) for(int c=0; c<4; ++c) acc[c][ny][nx][sy][sx]=0;
+    for (int nx=0;nx<3;++nx) for (int ny=0;ny<3;++ny) for(int c=cc; c<4; c+=2) acc[c][ny][nx][sy][sx]=0;
 
-    //If using Opt6 need to sync here
-    //__syncthreads();
+    __syncthreads();
 
     int i_center = blockIdx.x * blockDim.x / spx_size;
-    int j_center = (blockIdx.y * blockDim.y / 1) / spx_size; //See Opt6
+    int j_center = (blockIdx.y * blockDim.y / 2) / spx_size;
 
-    //If using Opt6 need this if statement
-    //if (cc==0)
-    //{
+    if (cc==0)
+    {
         int pix_index = y * pix_width + x;
         int i = d_own_data[pix_index].i;
         int j = d_own_data[pix_index].j;
@@ -75,7 +73,7 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
         acc[1][ny][nx][sy][sx] = d_pix_data[pix_index].a;
         acc[2][ny][nx][sy][sx] = d_pix_data[pix_index].b;
         acc[3][ny][nx][sy][sx] = 1;
-    //}
+    }
    
     __syncthreads();
 
@@ -90,9 +88,8 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
 	int locationIndex = tid % step; // 0..31
 	int threadGroup = tid / step; // 0..7
 
-	//See Opt6
 	//int maxThreadGroup = blockDim.x * blockDim.y / step; // 8
-	int maxThreadGroup = 256 / step; // 8
+	int maxThreadGroup = 512 / step; // 8
 
 	int maxLoopIndex = (arraySize + maxThreadGroup - 1) / maxThreadGroup; // 43/8 = 5
 
