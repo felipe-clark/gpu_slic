@@ -30,11 +30,18 @@ const float max_float_h = std::numeric_limits<float>::max();
 // Every pixel of the original image is
 // broken down into the three components
 // of the LAB color space
+struct pix_original_data
+{
+    unsigned char l;
+    unsigned char a;
+    unsigned char b;
+};
 struct pix_data
 {
     unsigned char l;
     unsigned char a;
     unsigned char b;
+    //unsigned char padding;
 };
 
 // Ownership

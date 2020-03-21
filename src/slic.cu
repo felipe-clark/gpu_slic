@@ -52,7 +52,15 @@ int main(int argc, char** argv)
     cudaMalloc(&d_own_data, own_byte_size);
     cudaMalloc(&d_spx_data, spx_byte_size);
 
-    cudaMemcpy(d_pix_data, m_lab_image.data, pix_byte_size, cudaMemcpyHostToDevice);
+    pix_data* h_pix_data = (pix_data*)malloc(pix_byte_size);
+    for (int x=0; x<pix_width; x++) for (int y=0; y<pix_height; y++)
+    {
+        int pix_idx = x + pix_width*y;
+	h_pix_data[pix_idx].l = ((pix_original_data*)m_lab_image.data)[pix_idx].l;
+	h_pix_data[pix_idx].a = ((pix_original_data*)m_lab_image.data)[pix_idx].a;
+	h_pix_data[pix_idx].b = ((pix_original_data*)m_lab_image.data)[pix_idx].b;
+    }
+    cudaMemcpy(d_pix_data, h_pix_data, pix_byte_size, cudaMemcpyHostToDevice);
 
     own_data* h_own_data = (own_data*)malloc(own_byte_size);
     initialize_own(h_own_data);
@@ -108,7 +116,7 @@ int main(int argc, char** argv)
     double ts_end = getTimestamp();
     printf("Average time %0.9f, total %0.9f iters %d\n", (ts_end - ts_start)/iterations, (ts_end - ts_start), iterations);
 
-    cudaMemcpy(m_lab_image.data, d_pix_data, pix_byte_size, cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_pix_data, d_pix_data, pix_byte_size, cudaMemcpyDeviceToHost);
     cudaMemcpy(h_own_data, d_own_data, own_byte_size, cudaMemcpyDeviceToHost);
     cudaMemcpy(h_spx_data, d_spx_data, spx_byte_size, cudaMemcpyDeviceToHost);
 
@@ -129,13 +137,21 @@ int main(int argc, char** argv)
     printf("3\n"); cudaDeviceSynchronize(); //TODO
     k_averaging<<<spx_blocksPerGrid, spx_threadsPerBlock>>>(d_spx_data);
 
-    cudaMemcpy(m_lab_image.data, d_pix_data, pix_byte_size, cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_pix_data, d_pix_data, pix_byte_size, cudaMemcpyDeviceToHost);
     cudaMemcpy(h_own_data, d_own_data, own_byte_size, cudaMemcpyDeviceToHost);
     cudaMemcpy(h_spx_data, d_spx_data, spx_byte_size, cudaMemcpyDeviceToHost);
 
-    color_solid((pix_data*)m_lab_image.data, h_own_data, h_spx_data);
-    //color_borders((pix_data*)m_lab_image.data, h_own_data, h_spx_data);
-    //test_color_own((pix_data*)m_lab_image.data, h_own_data, h_spx_data);
+    color_solid(h_pix_data, h_own_data, h_spx_data);
+    //color_borders(h_pix_data, h_own_data, h_spx_data);
+    //test_color_own(h_pix_data, h_own_data, h_spx_data);
+
+    for (int x=0; x<pix_width; x++) for (int y=0; y<pix_height; y++)
+    {
+        int pix_idx = x + pix_width*y;
+	((pix_original_data*)m_lab_image.data)[pix_idx].l = h_pix_data[pix_idx].l;
+	((pix_original_data*)m_lab_image.data)[pix_idx].a = h_pix_data[pix_idx].a;
+	((pix_original_data*)m_lab_image.data)[pix_idx].b = h_pix_data[pix_idx].b;
+    }
 
     cv::Mat m_rgb_result_image;
     cv::cvtColor(m_lab_image, m_rgb_result_image, cv::COLOR_Lab2BGR);
