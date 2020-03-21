@@ -49,58 +49,75 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     const int arraySize = 4 * 3 * 3;
     const int dimensions = 8 * 32;
 
+    int tidx=threadIdx.x;
+    int tidy=threadIdx.y;
     int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = (blockIdx.y * blockDim.y + threadIdx.y) / 4;
-    int sx = threadIdx.x;
-    int sy = y % 8;
-    int cc = threadIdx.y % 4;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
 
-    for (int nx=0;nx<3;++nx) for (int ny=0;ny<3;++ny) acc[cc][ny][nx][sy][sx]=0;
-
-    __syncthreads();
+    for (int nx=0;nx<3;++nx) for (int ny=0;ny<3;++ny) for(int c=0;c<4;++c) acc[c][ny][nx][tidy][tidx]=0;
 
     int i_center = blockIdx.x * blockDim.x / spx_size;
-    int j_center = (blockIdx.y * blockDim.y / 4) / spx_size;
-
-    if (cc==0)
-    {
-        int pix_index = y * pix_width + x;
-        int i = d_own_data[pix_index].i;
-        int j = d_own_data[pix_index].j;
-        int nx = (i<i_center) ? 0 : ((i>i_center) ? 2 : 1);
-        int ny = (j<j_center) ? 0 : ((j>j_center) ? 2 : 1);
-        acc[0][ny][nx][sy][sx] = d_pix_data[pix_index].l;
-        acc[1][ny][nx][sy][sx] = d_pix_data[pix_index].a;
-        acc[2][ny][nx][sy][sx] = d_pix_data[pix_index].b;
-        acc[3][ny][nx][sy][sx] = 1;
-    }
+    int j_center = blockIdx.y * blockDim.y / spx_size;
+    int pix_index = y * pix_width + x;
+    int i = d_own_data[pix_index].i;
+    int j = d_own_data[pix_index].j;
+    int nx = (i<i_center) ? 0 : ((i>i_center) ? 2 : 1);
+    int ny = (j<j_center) ? 0 : ((j>j_center) ? 2 : 1);
+    acc[0][ny][nx][tidy][tidx] = d_pix_data[pix_index].l;
+    acc[1][ny][nx][tidy][tidx] = d_pix_data[pix_index].a;
+    acc[2][ny][nx][tidy][tidx] = d_pix_data[pix_index].b;
+    acc[3][ny][nx][tidy][tidx] = 1;
    
     __syncthreads();
 
     int* accptr = (int*)acc;
 
     // Collapse over X and Y
-    int tid = threadIdx.y * blockDim.x + threadIdx.x;
-
+    int tid = tidy * blockDim.x + tidx;
     for (int step=32*8/2; step>0; step /= 2)
     {
 	// step = 32 dimensions = 256 arraySize = 36
 	int locationIndex = tid % step; // 0..31
 	int threadGroup = tid / step; // 0..7
-	int maxThreadGroup = 4 * dimensions / step; // 8
+	int maxThreadGroup = dimensions / step; // 8
 	int maxLoopIndex = (arraySize + maxThreadGroup - 1) / maxThreadGroup; // 43/8 = 5
 
+	/*
+	if (step <= 16)
+	{
+            maxThreadGroup = 1;
+	    maxLoopIndex = 36;
+	    if (threadGroup>0) continue;
+	}
+	else if (step == 32)
+	{
+            if (debug) printf("STEP 32: maxT %d, maxL %d, tg %d, loc %d\n", maxThreadGroup, maxLoopIndex, threadGroup, locationIndex);   
+	}*/
+
+	// Divide arraySize (3*3*4=36) by max threadGroup + 1 (i.e. 8) and that's the loop
+	// Actual a = loop index * (max threadGroup + 1) + innerIndex
+
+	//if (debug) printf("s:%d loc:%d maxT:%d maxL:%d \n", step, locationIndex, maxThreadGroup, maxLoopIndex);
 	for (int loopIndex=0; loopIndex<maxLoopIndex; loopIndex++)
         {
 	    int innerIndex = loopIndex * maxThreadGroup + threadGroup; //0 8 16 24 32 + (0..7) --> 0..39
 	    if (innerIndex >= arraySize) continue; 
+	    //if (debug && loopIndex==16) printf("s:%d loc:%d maxT:%d maxL:%d i:%d A:%d B:%d \n", step, locationIndex, maxThreadGroup, maxLoopIndex, innerIndex, innerIndex*dimensions + locationIndex, innerIndex*dimensions+locationIndex+step);
             *(accptr + (innerIndex*dimensions + locationIndex)) += 
                 *(accptr + (innerIndex*dimensions + locationIndex + step));
         }
 	__syncthreads();
     }
 
-    if (tid != 0) return;
+    // Is this ok? See https://stackoverflow.com/questions/6666382/can-i-use-syncthreads-after-having-dropped-threads
+    // TODO: Use these threads for nx, ny, c loop
+    if (tidy != 0) return;
+
+    // Now, acc[c][ny][nx][0][0] has the values we need
+    // but where do we write them to?
+    
+    // Just one warp so no syncThreads (TODO)
+    if (tidx != 0) return;
 
     for (int ny=0; ny<3; ny++)
     {
@@ -113,10 +130,20 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
 
             int spx_index = j * spx_width + i;
 
+
+	    //if (blockIdx.x ==0 && blockIdx.y == 0)
+	    //printf("A:%d %d %d %u %u %u %u\n", i_center, j_center, spx_index, acc[0][ny][nx][0][0], acc[1][ny][nx][0][0], acc[2][ny][nx][0][0], acc[3][ny][nx][0][0]); 
+            
 	    atomicAdd(&(d_spx_data[spx_index].l_acc), (int)acc[0][ny][nx][0][0]);
             atomicAdd(&(d_spx_data[spx_index].a_acc), (int)acc[1][ny][nx][0][0]);
             atomicAdd(&(d_spx_data[spx_index].b_acc), (int)acc[2][ny][nx][0][0]);
             atomicAdd(&(d_spx_data[spx_index].num),   (int)acc[3][ny][nx][0][0]);
+	    
+	    //if (blockIdx.x==0 && blockIdx.y==0)
+	    //{
+	       //printf("C:%u %u %u %u\n", d_spx_data[spx_index].l_acc, d_spx_data[spx_index].a_acc, d_spx_data[spx_index].b_acc, d_spx_data[spx_index].num); 
+	       //printf("J\n");
+	    //}
         }
     }
 }

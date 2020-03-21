@@ -87,7 +87,10 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
 	// step = 32 dimensions = 256 arraySize = 36
 	int locationIndex = tid % step; // 0..31
 	int threadGroup = tid / step; // 0..7
-	int maxThreadGroup = 4 * dimensions / step; // 8
+
+	//int maxThreadGroup = blockDim.x * blockDim.y / step; // 8
+	int maxThreadGroup = 1024 / step; // 8
+
 	int maxLoopIndex = (arraySize + maxThreadGroup - 1) / maxThreadGroup; // 43/8 = 5
 
 	for (int loopIndex=0; loopIndex<maxLoopIndex; loopIndex++)

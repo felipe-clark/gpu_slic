@@ -72,14 +72,18 @@ int main(int argc, char** argv)
 
     // -------------------- The Kernel magic --------------------
 
-    dim3 pix_threadsPerBlock( 32, 32 ) ; //TODO
+    dim3 pix_threadsPerBlock( 32, 8 ) ; //TODO
     int pix_blockPerGridX = (pix_width + pix_threadsPerBlock.x-1)/pix_threadsPerBlock.x;
     int pix_blockPerGridY = (pix_height + pix_threadsPerBlock.y-1)/pix_threadsPerBlock.y;
     dim3 pix_blocksPerGrid(pix_blockPerGridX, pix_blockPerGridY, 1);
-    dim3 pix_blocksPerGridOpt(pix_blockPerGridX, pix_blockPerGridY*4, 1);
+    
+    dim3 pix_threadsPerBlockOpt( 32, 8 );
+    int pix_blockPerGridXOpt = (pix_width + pix_threadsPerBlockOpt.x-1)/pix_threadsPerBlockOpt.x;
+    int pix_blockPerGridYOpt = (pix_height + pix_threadsPerBlockOpt.y-1)/pix_threadsPerBlockOpt.y;
+    dim3 pix_blocksPerGridOpt(pix_blockPerGridXOpt, pix_blockPerGridYOpt*1, 1);
 
     //k_ownership<<<pix_blocksPerGrid, pix_threadsPerBlock>>>(d_pix_data, d_own_data, d_spx_data);
-    k_cumulativeCount<<<pix_blocksPerGridOpt, pix_threadsPerBlock>>>(d_pix_data, d_own_data, d_spx_data);
+    k_cumulativeCount<<<pix_blocksPerGridOpt, pix_threadsPerBlockOpt>>>(d_pix_data, d_own_data, d_spx_data);
     printf("1\n"); cudaDeviceSynchronize(); //TODO
 
     dim3 spx_threadsPerBlock(32, 32);
@@ -96,7 +100,7 @@ int main(int argc, char** argv)
     {
         k_reset<<<spx_blocksPerGrid, spx_threadsPerBlock>>>(d_spx_data);
         k_ownership<<<pix_blocksPerGrid, pix_threadsPerBlock>>>(d_pix_data, d_own_data, d_spx_data);
-        k_cumulativeCount<<<pix_blocksPerGridOpt, pix_threadsPerBlock>>>(d_pix_data, d_own_data, d_spx_data);
+        k_cumulativeCount<<<pix_blocksPerGridOpt, pix_threadsPerBlockOpt>>>(d_pix_data, d_own_data, d_spx_data);
 	//printf("REMOVE THIS BEFORE MEASURING\n"); cudaDeviceSynchronize(); //TODO
         k_averaging<<<spx_blocksPerGrid, spx_threadsPerBlock>>>(d_spx_data);
     }
