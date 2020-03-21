@@ -160,10 +160,10 @@ void initialize_spx(spx_data* h_spx_data)
             h_spx_data[spx_index].x = (2 * spx_size * i + spx_size)/2;
             h_spx_data[spx_index].y = (2 * spx_size * j + spx_size)/2;
 
-            h_spx_data[spx_index].l_acc = 0;
-            h_spx_data[spx_index].a_acc = 0;
-            h_spx_data[spx_index].b_acc = 0;
-            h_spx_data[spx_index].num = 0;
+            h_spx_data[spx_index].accum[0] = 0;
+            h_spx_data[spx_index].accum[1] = 0;
+            h_spx_data[spx_index].accum[2] = 0;
+            h_spx_data[spx_index].accum[3] = 0;
         }
     }
 }

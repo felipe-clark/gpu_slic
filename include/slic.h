@@ -76,10 +76,8 @@ struct spx_data
     // TODO: Consider padding
 
     // Accumulators for superpixel averaging
-    int l_acc;
-    int a_acc;
-    int b_acc;
-    int num;
+    // L, A, B, num
+    int accum[4];
 };
 
 // Initialization
