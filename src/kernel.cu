@@ -34,17 +34,22 @@ __global__ void k_cumulativeCountOrig(const pix_data* d_pix_data, const own_data
     }
 }
 
-__global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data* d_own_data, spx_data* d_spx_data)
-{
+__global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data* d_own_data, spx_data* d_spx_data
+#ifdef BANKDEBUG
+, bool h_debug) {
+#else
+){ const bool h_debug = false;
+#endif
     bool debug = false;
-    if (threadIdx.x == 0 && threadIdx.y == 0 && blockIdx.x == 0 && blockIdx.y == 0)
+    if (threadIdx.y == 0 && blockIdx.x == 0 && blockIdx.y == 0)
     {
-	    debug = true;
+	    debug = h_debug;
 	    //printf("K\n");
     }
 
     // If we do 16 instead of 8, only have enough memory for a short, not an int,
     // and 16*32*255 does not fit in a short
+    // TODO:Read from GMEM 2 at a time to fit more into SMEM
     __shared__ int acc[4][3][3][8][32]; //LAB+count, 3x3 neighbors, 8x32 values
     const int arraySize = 4 * 3 * 3;
     const int dimensions = 8 * 32;
@@ -74,8 +79,8 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
         int nx = (i<i_center) ? 0 : ((i>i_center) ? 2 : 1);
         int ny = (j<j_center) ? 0 : ((j>j_center) ? 2 : 1);
 	// Guaranteed no SMEM bank conflicts (last index sx is thread ID within warp)
-	// GMEM, no Opt6: A single warp reads consecutive pix_index values and the l/a/b are chars,
-	// so should be coalesced.
+	// GMEM: A single warp reads consecutive pix_index values and the l/a/b are chars,
+	// so should be coalesced (and aligned, if pix_data is padded)
         acc[0][ny][nx][sy][sx] = d_pix_data[pix_index].l;
         acc[1][ny][nx][sy][sx] = d_pix_data[pix_index].a;
         acc[2][ny][nx][sy][sx] = d_pix_data[pix_index].b;
@@ -104,7 +109,15 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
 	for (int loopIndex=0; loopIndex<maxLoopIndex; loopIndex++)
         {
 	    int innerIndex = loopIndex * maxThreadGroup + threadGroup; //0 8 16 24 32 + (0..7) --> 0..39
-	    if (innerIndex >= arraySize) continue; 
+	    if (innerIndex >= arraySize) continue;
+	    
+            if (debug)
+            {
+                printf("S%d L%d A: %d B: %d\n", step, loopIndex,
+		    (innerIndex*dimensions + locationIndex) % 32,
+		    (innerIndex*dimensions + locationIndex + step) % 32);
+            }
+
             *(accptr + (innerIndex*dimensions + locationIndex)) += 
                 *(accptr + (innerIndex*dimensions + locationIndex + step));
         }

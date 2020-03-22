@@ -96,9 +96,16 @@ void enforce_label_connectivity(own_data* o_own_data, const int width,
     const int height, own_data* n_own_data, int n_spx);
 
 // Kernels
+//#define BANKDEBUG // Debug bank conflicts
 #define k_cumulativeCount k_cumulativeCountOpt1
 __global__ void k_cumulativeCountOrig(const pix_data* d_pix_data, const own_data* d_own_data, spx_data* d_spx_data);
-__global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data* d_own_data, spx_data* d_spx_data);
+
+__global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data* d_own_data, spx_data* d_spx_data
+#ifdef BANKDEBUG
+		, bool h_debug
+#endif
+		);
+
 __global__ void k_averaging(spx_data* d_spx_data);
 __global__ void k_ownership(const pix_data* d_pix_data, own_data* d_own_data, const spx_data* d_spx_data);
 __global__ void k_reset(spx_data* d_spx_data);

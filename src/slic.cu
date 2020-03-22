@@ -91,7 +91,13 @@ int main(int argc, char** argv)
     dim3 pix_blocksPerGridOpt(pix_blockPerGridXOpt, pix_blockPerGridYOpt*1, 1);
 
     //k_ownership<<<pix_blocksPerGrid, pix_threadsPerBlock>>>(d_pix_data, d_own_data, d_spx_data);
-    k_cumulativeCount<<<pix_blocksPerGridOpt, pix_threadsPerBlockOpt>>>(d_pix_data, d_own_data, d_spx_data);
+    
+    k_cumulativeCount<<<pix_blocksPerGridOpt, pix_threadsPerBlockOpt>>>(d_pix_data, d_own_data, d_spx_data
+    #ifdef BANKDEBUG
+    , true
+    #endif
+    );
+
     printf("1\n"); cudaDeviceSynchronize(); //TODO
 
     dim3 spx_threadsPerBlock(32, 32);
@@ -108,7 +114,13 @@ int main(int argc, char** argv)
     {
         k_reset<<<spx_blocksPerGrid, spx_threadsPerBlock>>>(d_spx_data);
         k_ownership<<<pix_blocksPerGrid, pix_threadsPerBlock>>>(d_pix_data, d_own_data, d_spx_data);
-        k_cumulativeCount<<<pix_blocksPerGridOpt, pix_threadsPerBlockOpt>>>(d_pix_data, d_own_data, d_spx_data);
+        
+	k_cumulativeCount<<<pix_blocksPerGridOpt, pix_threadsPerBlockOpt>>>(d_pix_data, d_own_data, d_spx_data
+        #ifdef BANKDEBUG
+	, false
+	#endif
+	);
+
 	//printf("REMOVE THIS BEFORE MEASURING\n"); cudaDeviceSynchronize(); //TODO
         k_averaging<<<spx_blocksPerGrid, spx_threadsPerBlock>>>(d_spx_data);
     }
