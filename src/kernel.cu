@@ -50,9 +50,9 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     // If we do 16 instead of 8, only have enough memory for a short, not an int,
     // and 16*32*255 does not fit in a short
     // TODO:Read from GMEM 2 at a time to fit more into SMEM
-    __shared__ int acc[4][3][3][10][33]; //LAB+count, 3x3 neighbors, 8x32 values (33 for bank conflict avoidance)
+    __shared__ int acc[4][3][3][10][34]; //LAB+count, 3x3 neighbors, 8x32 values (33 for bank conflict avoidance)
     const int arraySize = 4 * 3 * 3;
-    const int dimensions = 10 * 33; // Adjusted for mem bank conflict avoidance
+    const int dimensions = 10 * 34; // Adjusted for mem bank conflict avoidance
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = (blockIdx.y * blockDim.y + threadIdx.y) / 1; //See Opt6
@@ -113,8 +113,8 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
 	   
 	    // Adjust for mem bank conflict avoidance (our max X is 33, not 32,
 	    // so every 32 locations we add 1 more)
-	    int adjLocIndex = locationIndex + (locationIndex / 32);
-	    int adjStep = step + (step / 32);
+	    int adjLocIndex = locationIndex + 2*(locationIndex / 32);
+	    int adjStep = step + 2*(step / 32);
 
             if (debug)
 	    {
