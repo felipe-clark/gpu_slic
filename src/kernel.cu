@@ -55,9 +55,9 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     const int dimensions = 10 * 34; // Adjusted for mem bank conflict avoidance
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = (blockIdx.y * blockDim.y + threadIdx.y) * 8; //See Opt6
+    int y = (blockIdx.y * blockDim.y + threadIdx.y) * pix_at_a_time; //See Opt6
     int sx = threadIdx.x;
-    int sy = (y % 64) / 8;
+    int sy = (y % (8 * pix_at_a_time)) / pix_at_a_time;
 
     //int cc = threadIdx.y % 2; //See Opt6 (use in loop below)
     //Guaranteed no bank conflicts here (regardless of Opt6 or not),
@@ -68,13 +68,13 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     //__syncthreads();
 
     int i_center = blockIdx.x * blockDim.x / spx_size;
-    int j_center = (blockIdx.y * blockDim.y * 8) / spx_size; //See Opt6
+    int j_center = (blockIdx.y * blockDim.y * pix_at_a_time) / spx_size; //See Opt6
     //int j_center = y / spx_size;
 
     //If using Opt6 need this if statement
     //if (cc==0)
     //{
-    for (int yidx=0; yidx<8; ++yidx)
+    for (int yidx=0; yidx<pix_at_a_time; ++yidx)
     {
 	if (y+yidx>=pix_height) break;
         int pix_index = (y + yidx) * pix_width + x;
