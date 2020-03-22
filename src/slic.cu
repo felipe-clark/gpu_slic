@@ -80,17 +80,25 @@ int main(int argc, char** argv)
 
     // -------------------- The Kernel magic --------------------
 
-    dim3 pix_threadsPerBlock( 32, 8 ) ; //TODO
+    // Original cumulativeSum kernel
+    dim3 pix_threadsPerBlock( 32, 8 ) ;
     int pix_blockPerGridX = (pix_width + pix_threadsPerBlock.x-1)/pix_threadsPerBlock.x;
     int pix_blockPerGridY = (pix_height + pix_threadsPerBlock.y-1)/pix_threadsPerBlock.y;
     dim3 pix_blocksPerGrid(pix_blockPerGridX, pix_blockPerGridY, 1);
-    
+
+    // Ownership kernel - TODO: Optimize
+    dim3 pix_threadsPerBlockOwn( 32, 8 ) ;
+    int pix_blockPerGridXOwn = (pix_width + pix_threadsPerBlockOwn.x-1)/pix_threadsPerBlockOwn.x;
+    int pix_blockPerGridYOwn = (pix_height + pix_threadsPerBlockOwn.y-1)/pix_threadsPerBlockOwn.y;
+    dim3 pix_blocksPerGridOwn(pix_blockPerGridXOwn, pix_blockPerGridYOwn, 1);
+
+    // Optimized cumulativeSum kernel
     dim3 pix_threadsPerBlockOpt( 32, 8 );
     int pix_blockPerGridXOpt = (pix_width + pix_threadsPerBlockOpt.x-1)/pix_threadsPerBlockOpt.x;
     int pix_blockPerGridYOpt = (pix_height + pix_threadsPerBlockOpt.y-1)/pix_threadsPerBlockOpt.y;
     dim3 pix_blocksPerGridOpt(pix_blockPerGridXOpt, (pix_blockPerGridYOpt+pix_at_a_time-1)/pix_at_a_time, 1);
 
-    //k_ownership<<<pix_blocksPerGrid, pix_threadsPerBlock>>>(d_pix_data, d_own_data, d_spx_data);
+    //k_ownership<<<pix_blocksPerGridOwn, pix_threadsPerBlockOwn>>>(d_pix_data, d_own_data, d_spx_data);
     
     k_cumulativeCount<<<pix_blocksPerGridOpt, pix_threadsPerBlockOpt>>>(d_pix_data, d_own_data, d_spx_data
     #ifdef BANKDEBUG
@@ -100,6 +108,7 @@ int main(int argc, char** argv)
 
     printf("1\n"); cudaDeviceSynchronize(); //TODO
 
+    // Reset and Averaging kernels
     dim3 spx_threadsPerBlock(32, 32);
     int spx_blockPerGridX = (spx_width + spx_threadsPerBlock.x-1)/spx_threadsPerBlock.x;
     int spx_blockPerGridY = (spx_height + spx_threadsPerBlock.y-1)/spx_threadsPerBlock.y;
@@ -113,7 +122,7 @@ int main(int argc, char** argv)
     for (int i = 0 ; i<iterations; i++)
     {
         k_reset<<<spx_blocksPerGrid, spx_threadsPerBlock>>>(d_spx_data);
-        k_ownership<<<pix_blocksPerGrid, pix_threadsPerBlock>>>(d_pix_data, d_own_data, d_spx_data);
+        k_ownership<<<pix_blocksPerGridOwn, pix_threadsPerBlockOwn>>>(d_pix_data, d_own_data, d_spx_data);
         
 	k_cumulativeCount<<<pix_blocksPerGridOpt, pix_threadsPerBlockOpt>>>(d_pix_data, d_own_data, d_spx_data
         #ifdef BANKDEBUG
