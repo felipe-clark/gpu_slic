@@ -88,7 +88,7 @@ int main(int argc, char** argv)
     dim3 pix_threadsPerBlockOpt( 32, 8 );
     int pix_blockPerGridXOpt = (pix_width + pix_threadsPerBlockOpt.x-1)/pix_threadsPerBlockOpt.x;
     int pix_blockPerGridYOpt = (pix_height + pix_threadsPerBlockOpt.y-1)/pix_threadsPerBlockOpt.y;
-    dim3 pix_blocksPerGridOpt(pix_blockPerGridXOpt, (pix_blockPerGridYOpt+1)/2, 1);
+    dim3 pix_blocksPerGridOpt(pix_blockPerGridXOpt, (pix_blockPerGridYOpt+7)/8, 1);
 
     //k_ownership<<<pix_blocksPerGrid, pix_threadsPerBlock>>>(d_pix_data, d_own_data, d_spx_data);
     
