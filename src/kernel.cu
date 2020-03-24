@@ -172,7 +172,104 @@ __global__ void k_averaging(spx_data* d_spx_data)
     }
 }
 
-__global__ void k_ownership(const pix_data* d_pix_data, own_data* d_own_data, const spx_data* d_spx_data)
+__global__ void k_ownershipOpt(const pix_data* d_pix_data, own_data* d_own_data, const spx_data* d_spx_data)
+{
+    __shared__ spx_data spx[9 * 32];
+
+    float min_dist = 10E99;// max_float;
+    int min_i = 0;
+    int min_j = 0;
+
+    int i_sign[9] = {-1, -1, -1, 0, 0, 0, 1, 1, 1};
+    int j_sign[9] = {-1, 0, 1, -1, 0, 1, -1, 0, 1};
+    
+
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (y < pix_height && x < pix_width) 
+    {
+        int pix_index = y * pix_width + x;
+        int i_center = x/spx_size;
+        int j_center = y/spx_size;
+
+        int l = d_pix_data[pix_index].l;
+        int a = d_pix_data[pix_index].a;
+        int b = d_pix_data[pix_index].b;
+
+
+        if(threadIdx.x == 0 && threadIdx.y == 0 && blockIdx.x % 3 == 0)// &&  threadIdx.y == 0)
+        {
+            int sh_idx = 0;
+            for (int i = i_center - window_size; i <= i_center + window_size; i++) // i = i_center - 1, i_center, i_center + 1
+            {
+                for(int j = j_center - window_size; j <= j_center + window_size; j++) // j = j_center - 1, j_center, j_center + 1
+                {
+                    if (j < 0 || j >= spx_height || i < 0 || i > spx_width)
+                    {
+                        sh_idx++;
+                        continue;
+                    }
+
+                    int spx_index = j * spx_width + i;
+
+                    // if(threadIdx.x == 0 && threadIdx.y == 0 && blockIdx.x == 0 && blockIdx.y == 0)
+                    //     printf("%i ::::: %i\n", spx_index, sh_idx);
+
+                    
+                    spx[sh_idx + 8*blockIdx.x] = d_spx_data[spx_index];
+                    
+                    if(blockIdx.x > 0 && (sh_idx == 0 || sh_idx == 1 || sh_idx == 2 || sh_idx == 3 || sh_idx == 4 || sh_idx == 5)) //Why blockIdx.x-1 > 0 crashes?
+                        spx[sh_idx+3 + 8*(blockIdx.x-1)] = spx[sh_idx + 8*blockIdx.x];
+
+                    if(blockIdx.x > 0 && (sh_idx == 0 || sh_idx == 1 || sh_idx == 2)) //Why blockIdx.x-1 > 0 crashes?
+                        spx[sh_idx+6 + 8*(blockIdx.x-2)] = spx[sh_idx + 8*blockIdx.x];
+
+                    if(blockIdx.x < blockDim.x && (sh_idx == 3 || sh_idx == 4 || sh_idx == 5 || sh_idx == 6 || sh_idx == 7 || sh_idx == 8))
+                        spx[sh_idx-3 + 8*(blockIdx.x+1)] = spx[sh_idx + 8*blockIdx.x];
+
+                    if(blockIdx.x < blockDim.x && (sh_idx == 6 || sh_idx == 7 || sh_idx == 8))
+                        spx[sh_idx-6 + 8*(blockIdx.x+2)] = spx[sh_idx + 8*blockIdx.x];
+
+                    sh_idx++;
+                }
+            }
+        }
+
+        __syncthreads();
+
+        for(int i=0; i<9; i++)
+        {
+                int l_dist = l-(int)(spx[i + 8*blockIdx.x].l);
+                l_dist *= l_dist;
+                int a_dist = a-(int)(spx[i + 8*blockIdx.x].a);
+                a_dist *= a_dist;
+                int b_dist = b-(int)(spx[i + 8*blockIdx.x].b);
+                b_dist *= b_dist;
+                int dlab = l_dist + a_dist + b_dist;
+
+                int x_dist = x-(int)spx[i + 8*blockIdx.x].x;
+                x_dist *= x_dist;
+                int y_dist = y-(int)spx[i + 8*blockIdx.x].y;
+                y_dist *= y_dist;
+                int dxy = x_dist + y_dist;
+
+                float D = dlab + slic_factor * dxy;
+
+            if (D < min_dist)
+            {
+                min_dist = D;
+                min_i = i_center + i_sign[i]*window_size;
+                min_j = j_center + j_sign[i]*window_size;
+            }
+        }
+
+        d_own_data[pix_index].i = min_i;
+        d_own_data[pix_index].j = min_j;
+    }
+}
+
+__global__ void k_ownershipOrig(const pix_data* d_pix_data, own_data* d_own_data, const spx_data* d_spx_data)
 {
     float min_dist = 10E99;// max_float;
     int min_i = 0;
