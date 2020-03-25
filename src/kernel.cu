@@ -41,6 +41,8 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     // If we do 16 instead of 8, only have enough memory for a short, not an int,
     // and 16*32*255 does not fit in a short
     __shared__ int acc[6][3][3][4][32]; //LAB+count, 3x3 neighbors, 8x32 values
+	const int arraySize=6*3*3;
+	const int dimensions=4*32;
 
     int tidx=threadIdx.x;
     int tidy=threadIdx.y;
@@ -64,18 +66,30 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     acc[5][ny][nx][tidy][tidx] = y;
    
     __syncthreads();
+	
+	int* accptr = (int*)acc;
 
     // Collapse over X and Y
     int tid = tidy * blockDim.x + tidx;
     for (int step=32*4/2; step>0; step /= 2)
     {
-		if (tid<step)
+		int locationIndex = tid % step;
+		int threadGroup = tid / step;
+		int maxThreadGroup = dimensions / step;
+		int maxLoopIndex = (arraySize + maxThreadGroup - 1) / maxThreadGroup;
+
+		// Divide arraySize (3*3*6=54) by max threadGroup + 1 and that's the loop
+		// Actual a = loop index * (max threadGroup + 1) + innerIndex
+	
+		for (int loopIndex=0; loopIndex<maxLoopIndex; loopIndex++)
         {
-            for (int ny=0; ny<3; ny++)
-            for (int nx=0; nx<3; nx++)
-            for (int c=0; c<6; c++)
-            *((int*)acc[c][ny][nx] + tid) += *((int*)acc[c][ny][nx] + tid + step);
+			int innerIndex = loopIndex * maxThreadGroup + threadGroup;
+			if (innerIndex >= arraySize) continue; 
+
+            *(accptr + (innerIndex*dimensions + locationIndex)) += 
+                *(accptr + (innerIndex*dimensions + locationIndex + step));
         }
+		
 		__syncthreads();
     }
 
