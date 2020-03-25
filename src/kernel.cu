@@ -65,36 +65,24 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
    
     __syncthreads();
 
-    // Collapse over X
-    for (int step=1; step<32; step *= 2)
+    // Collapse over X and Y
+    int tid = tidy * blockDim.x + tidx;
+    for (int step=1; step<32*4; step *= 2)
     {
-        if (tidx % (2*step) == 0)
+        if (tid % (2*step) == 0)
         {
             for (int ny=0; ny<3; ny++)
             for (int nx=0; nx<3; nx++)
             for (int c=0; c<6; c++)
-            acc[c][ny][nx][tidy][tidx] += acc[c][ny][nx][tidy][tidx + step];
+            *((int*)acc[c][ny][nx] + tid) += *((int*)acc[c][ny][nx] + tid + step);
         }
+		__syncthreads();
     }
 
     // Is this ok? See https://stackoverflow.com/questions/6666382/can-i-use-syncthreads-after-having-dropped-threads
     // TODO: Use these threads for nx, ny, c loop
     if (tidy != 0) return;
-    __syncthreads();
-
-    if (tidx>=4) return;
-    // Collapse over Y
-    for (int step=1; step<4; step *= 2)
-    {
-        if (tidx % (2*step) == 0)
-        {
-            for (int ny=0; ny<3; ny++)
-            for (int nx=0; nx<3; nx++)
-            for (int c=0; c<6; c++)
-            acc[c][ny][nx][tidx][0] += acc[c][ny][nx][tidx + step][0];
-        }
-    }
-
+    
     // Now, acc[c][ny][nx][0][0] has the values we need
     // but where do we write them to?
    
