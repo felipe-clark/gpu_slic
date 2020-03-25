@@ -69,12 +69,13 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     int tid = tidy * blockDim.x + tidx;
     for (int step=1; step<32*4; step *= 2)
     {
-        if (tid % (2*step) == 0)
+		int index = 2*step*tid;
+		if (index<32*4/step)
         {
             for (int ny=0; ny<3; ny++)
             for (int nx=0; nx<3; nx++)
             for (int c=0; c<6; c++)
-            *((int*)acc[c][ny][nx] + tid) += *((int*)acc[c][ny][nx] + tid + step);
+            *((int*)acc[c][ny][nx] + index) += *((int*)acc[c][ny][nx] + index + step);
         }
 		__syncthreads();
     }
