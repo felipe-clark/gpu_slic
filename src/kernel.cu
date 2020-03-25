@@ -50,19 +50,19 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     // If we do 16 instead of 8, only have enough memory for a short, not an int,
     // and 16*32*255 does not fit in a short
     // TODO:Read from GMEM 2 at a time to fit more into SMEM
-    __shared__ int acc[4][3][3][10][34]; //LAB+count, 3x3 neighbors, 8x32 values (33 for bank conflict avoidance)
-    const int arraySize = 4 * 3 * 3;
-    const int dimensions = 10 * 34; // Adjusted for mem bank conflict avoidance
+    __shared__ int acc[6][3][3][6][33]; //LAB+count+xy, 3x3 neighbors, 4x32 values (more for bank conflict avoidance)
+    const int arraySize = 6 * 3 * 3;
+    const int dimensions = 6 * 33; // Adjusted for mem bank conflict avoidance
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = (blockIdx.y * blockDim.y + threadIdx.y) * pix_at_a_time; //See Opt6
     int sx = threadIdx.x;
-    int sy = (y % (8 * pix_at_a_time)) / pix_at_a_time;
+    int sy = (y % (4 * pix_at_a_time)) / pix_at_a_time;
 
     //int cc = threadIdx.y % 2; //See Opt6 (use in loop below)
     //Guaranteed no bank conflicts here (regardless of Opt6 or not),
     //because the last array index (sx) is the ID of the thread within the warp.
-    for (int nx=0;nx<3;++nx) for (int ny=0;ny<3;++ny) for(int c=0; c<4; ++c) acc[c][ny][nx][sy][sx]=0;
+    for (int nx=0;nx<3;++nx) for (int ny=0;ny<3;++ny) for(int c=0; c<6; ++c) acc[c][ny][nx][sy][sx]=0;
 
     //If using Opt6 need to sync here
     //__syncthreads();
@@ -89,6 +89,8 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
         acc[1][ny][nx][sy][sx] = d_pix_data[pix_index].a + (yidx?acc[1][ny][nx][sy][sx]:0);
         acc[2][ny][nx][sy][sx] = d_pix_data[pix_index].b + (yidx?acc[2][ny][nx][sy][sx]:0);
         acc[3][ny][nx][sy][sx] = 1 + (yidx?acc[3][ny][nx][sy][sx]:0);
+        acc[4][ny][nx][sy][sx] = x + (yidx?acc[4][ny][nx][sy][sx]:0);
+        acc[5][ny][nx][sy][sx] = y + yidx + (yidx?acc[5][ny][nx][sy][sx]:0);
     }
     //}
    
@@ -99,7 +101,7 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     // Collapse over X and Y
     int tid = threadIdx.y * blockDim.x + threadIdx.x;
 
-    for (int step=32*8/2; step>0; step /= 2)
+    for (int step=32*4/2; step>0; step /= 2)
     {
 	// step = 32 dimensions = 256 arraySize = 36
 	int locationIndex = tid % step; // 0..31
@@ -107,7 +109,7 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
 
 	//See Opt6
 	//int maxThreadGroup = blockDim.x * blockDim.y / step; // 8
-	int maxThreadGroup = 256 / step; // 8
+	int maxThreadGroup = 128 / step; // 8
 
 	int maxLoopIndex = (arraySize + maxThreadGroup - 1) / maxThreadGroup; // 43/8 = 5
 
@@ -118,8 +120,8 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
 	   
 	    // Adjust for mem bank conflict avoidance (our max X is 33, not 32,
 	    // so every 32 locations we add 1 more)
-	    int adjLocIndex = locationIndex + 2*(locationIndex / 32);
-	    int adjStep = step + 2*(step / 32);
+	    int adjLocIndex = locationIndex + 1*(locationIndex / 32);
+	    int adjStep = step + 1*(step / 32);
 
             if (debug)
 	    {
@@ -135,9 +137,9 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
 	__syncthreads();
     }
 
-    if (threadIdx.y >= 2) return; //Keep 32*2=64 threads, enough for arraySize=3*3*4=36
-    int c = tid % 4;
-    tid /= 4;
+    if (threadIdx.y >= 2) return; //Keep 32*2=64 threads, enough for arraySize=3*3*6=54
+    int c = tid % 6;
+    tid /= 6;
     int nx = tid % 3;
     int ny = tid / 3;
     if (ny>=3) return;
@@ -169,6 +171,8 @@ __global__ void k_averaging(spx_data* d_spx_data)
         d_spx_data[spx_index].l = d_spx_data[spx_index].accum[0] / d_spx_data[spx_index].accum[3];
         d_spx_data[spx_index].a = d_spx_data[spx_index].accum[1] / d_spx_data[spx_index].accum[3];
         d_spx_data[spx_index].b = d_spx_data[spx_index].accum[2] / d_spx_data[spx_index].accum[3];
+        d_spx_data[spx_index].x = d_spx_data[spx_index].accum[4] / d_spx_data[spx_index].accum[3];
+        d_spx_data[spx_index].y = d_spx_data[spx_index].accum[5] / d_spx_data[spx_index].accum[3];
     }
 }
 
@@ -432,5 +436,7 @@ __global__ void k_reset(spx_data* d_spx_data)
         d_spx_data[spx_index].accum[1] = 0;
 	d_spx_data[spx_index].accum[2] = 0;
         d_spx_data[spx_index].accum[3] = 0;
+	d_spx_data[spx_index].accum[4] = 0;
+        d_spx_data[spx_index].accum[5] = 0;
     }
 }
