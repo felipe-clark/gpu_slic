@@ -44,38 +44,50 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
 	const int arraySize=6*3*3;
 	const int dimensions=4*32;
 
-    int tidx=threadIdx.x;
-    int tidy=threadIdx.y;
     int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
+    int y = (blockIdx.y * blockDim.y + threadIdx.y) / OPT6;
+    int sx = threadIdx.x;
+    int sy = threadIdx.y / OPT6;
 
-    for (int nx=0;nx<3;++nx) for (int ny=0;ny<3;++ny) for(int c=0;c<6;++c) acc[c][ny][nx][tidy][tidx]=0;
+    int cc = threadIdx.y % OPT6;
+    int ccs = 0; // 0 or cc ?
+    int ccstep = 1; // 1 or OPT6 value ?
+    for (int nx=0;nx<3;++nx) for (int ny=0;ny<3;++ny) for(int c=ccs;c<6;c+=ccstep) acc[c][ny][nx][sy][sx]=0;
+    //__syncthreads(); // Sometimes needed for OPT6
 
     int i_center = blockIdx.x * blockDim.x / spx_size;
-    int j_center = blockIdx.y * blockDim.y / spx_size;
+    //int j_center = (blockIdx.y * blockDim.y / 4) / spx_size; //OPT6
+    int j_center = y / spx_size;
+
+    if (cc==0) { //OPT6
     int pix_index = y * pix_width + x;
     int i = d_own_data[pix_index].i;
     int j = d_own_data[pix_index].j;
     int nx = (i<i_center) ? 0 : ((i>i_center) ? 2 : 1);
     int ny = (j<j_center) ? 0 : ((j>j_center) ? 2 : 1);
-    acc[0][ny][nx][tidy][tidx] = d_pix_data[pix_index].l;
-    acc[1][ny][nx][tidy][tidx] = d_pix_data[pix_index].a;
-    acc[2][ny][nx][tidy][tidx] = d_pix_data[pix_index].b;
-    acc[3][ny][nx][tidy][tidx] = 1;
-    acc[4][ny][nx][tidy][tidx] = x;
-    acc[5][ny][nx][tidy][tidx] = y;
+    acc[0][ny][nx][sy][sx] = d_pix_data[pix_index].l;
+    acc[1][ny][nx][sy][sx] = d_pix_data[pix_index].a;
+    acc[2][ny][nx][sy][sx] = d_pix_data[pix_index].b;
+    acc[3][ny][nx][sy][sx] = 1;
+    acc[4][ny][nx][sy][sx] = x;
+    acc[5][ny][nx][sy][sx] = y;
+    } //OPT6
    
     __syncthreads();
 	
 	int* accptr = (int*)acc;
 
     // Collapse over X and Y
-    int tid = tidy * blockDim.x + tidx;
+    int tid = threadIdx.y * blockDim.x + threadIdx.x;
     for (int step=32*4/2; step>0; step /= 2)
     {
 		int locationIndex = tid % step;
 		int threadGroup = tid / step;
-		int maxThreadGroup = dimensions / step;
+		
+		//int maxThreadGroup = dimensions / step;
+		//int maxThreadGroup = blockDim.x * blockDim.y / step;
+	    int maxThreadGroup = 32 * 4 * OPT6 / step; //OPT6
+	
 		int maxLoopIndex = (arraySize + maxThreadGroup - 1) / maxThreadGroup;
 
 		// Divide arraySize (3*3*6=54) by max threadGroup + 1 and that's the loop
@@ -93,16 +105,9 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
 		__syncthreads();
     }
 
-    // Is this ok? See https://stackoverflow.com/questions/6666382/can-i-use-syncthreads-after-having-dropped-threads
-    // TODO: Use these threads for nx, ny, c loop
-    if (tidy != 0) return;
+    if (tid != 0) return;
     
     // Now, acc[c][ny][nx][0][0] has the values we need
-    // but where do we write them to?
-   
-    // Just one warp so no syncThreads (TODO)
-    if (tidx != 0) return;
-
     for (int ny=0; ny<3; ny++)
     {
         int j = j_center + ny - 1;

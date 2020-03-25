@@ -94,10 +94,10 @@ int main(int argc, char** argv)
     dim3 pix_blocksPerGridOwn(pix_blockPerGridXOwn, pix_blockPerGridYOwn, 1);
 
     // Optimized cumulativeSum kernel
-    dim3 pix_threadsPerBlockOpt( 32, 4 );
+    dim3 pix_threadsPerBlockOpt( 32, 4*OPT6 );
     int pix_blockPerGridXOpt = (pix_width + pix_threadsPerBlockOpt.x-1)/pix_threadsPerBlockOpt.x;
     int pix_blockPerGridYOpt = (pix_height + pix_threadsPerBlockOpt.y-1)/pix_threadsPerBlockOpt.y;
-    dim3 pix_blocksPerGridOpt(pix_blockPerGridXOpt, (pix_blockPerGridYOpt+pix_at_a_time-1)/pix_at_a_time, 1);
+    dim3 pix_blocksPerGridOpt(pix_blockPerGridXOpt, OPT6*(pix_blockPerGridYOpt+pix_at_a_time-1)/pix_at_a_time, 1);
 
     //k_ownership<<<pix_blocksPerGridOwn, pix_threadsPerBlockOwn>>>(d_pix_data, d_own_data, d_spx_data);
     
