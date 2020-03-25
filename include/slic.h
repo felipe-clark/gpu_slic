@@ -96,9 +96,9 @@ void enforce_label_connectivity(own_data* o_own_data, const int width,
     const int height, own_data* n_own_data, int n_spx);
 
 // Kernels
-const int pix_at_a_time = 16; //For optimization Opt10
+const int pix_at_a_time = 1; //For optimization Opt10
 //#define BANKDEBUG // Debug bank conflicts
-#define k_cumulativeCount k_cumulativeCountOpt1
+#define k_cumulativeCount k_cumulativeCountOrig
 __global__ void k_cumulativeCountOrig(const pix_data* d_pix_data, const own_data* d_own_data, spx_data* d_spx_data);
 
 __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data* d_own_data, spx_data* d_spx_data
@@ -109,7 +109,7 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
 
 __global__ void k_averaging(spx_data* d_spx_data);
 
-#define k_ownership k_ownershipOpt2
+#define k_ownership k_ownershipOrig
 __global__ void k_ownershipOrig(const pix_data* d_pix_data, own_data* d_own_data, const spx_data* d_spx_data);
 __global__ void k_ownershipOpt(const pix_data* d_pix_data, own_data* d_own_data, const spx_data* d_spx_data);
 __global__ void k_ownershipOpt2(const pix_data* d_pix_data, own_data* d_own_data, const spx_data* d_spx_data);
