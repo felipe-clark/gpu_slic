@@ -70,7 +70,7 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     for (int step=1; step<32*4; step *= 2)
     {
 		int index = 2*step*tid;
-		if (index<32*4/step)
+		if (index<(32*4/*/step*/))
         {
             for (int ny=0; ny<3; ny++)
             for (int nx=0; nx<3; nx++)
