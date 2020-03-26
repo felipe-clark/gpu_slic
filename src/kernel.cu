@@ -40,7 +40,7 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
 {
     // If we do 16 instead of 8, only have enough memory for a short, not an int,
     // and 16*32*255 does not fit in a short
-    __shared__ short acc[6][3][3][8][32]; //LAB+count, 3x3 neighbors, 8x32 values
+    __shared__ unsigned short acc[6][3][3][8][32]; //LAB+count, 3x3 neighbors, 8x32 values
     const int arraySize=6*3*3;
     const int dimensions=8*32;
 
@@ -77,7 +77,7 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
    
     __syncthreads();
 	
-    short* accptr = (short*)acc;
+    unsigned short* accptr = (unsigned short*)acc;
 
     // Collapse over X and Y
     int tid = threadIdx.y * blockDim.x + threadIdx.x;
@@ -131,7 +131,7 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
             atomicAdd(&(d_spx_data[spx_index].accum[3]), num);
             atomicAdd(&(d_spx_data[spx_index].accum[4]), (int)(acc[4][ny][nx][0][0]) + i_center * spx_size * num);
             atomicAdd(&(d_spx_data[spx_index].accum[5]), (int)(acc[5][ny][nx][0][0]) + j_center * spx_size * num);
-            if (i_center==30 && j_center==15 && d_spx_data[spx_index].accum[3]>0) printf("ic:%d jc:%d x:%d y:%d, qty:%d\n",i_center,j_center,d_spx_data[spx_index].accum[4],d_spx_data[spx_index].accum[5], d_spx_data[spx_index].accum[3]);
+            //if (i_center==30 && j_center==15 && d_spx_data[spx_index].accum[3]>0) printf("ic:%d jc:%d x:%d y:%d, qty:%d\n",i_center,j_center,d_spx_data[spx_index].accum[4],d_spx_data[spx_index].accum[5], d_spx_data[spx_index].accum[3]);
         }
     }
 }
@@ -148,8 +148,8 @@ __global__ void k_averaging(spx_data* d_spx_data)
         d_spx_data[spx_index].l = d_spx_data[spx_index].accum[0] / d_spx_data[spx_index].accum[3];
         d_spx_data[spx_index].a = d_spx_data[spx_index].accum[1] / d_spx_data[spx_index].accum[3];
         d_spx_data[spx_index].b = d_spx_data[spx_index].accum[2] / d_spx_data[spx_index].accum[3];
-        //d_spx_data[spx_index].x = d_spx_data[spx_index].accum[4] / d_spx_data[spx_index].accum[3];
-        //d_spx_data[spx_index].y = d_spx_data[spx_index].accum[5] / d_spx_data[spx_index].accum[3];
+        d_spx_data[spx_index].x = d_spx_data[spx_index].accum[4] / d_spx_data[spx_index].accum[3];
+        d_spx_data[spx_index].y = d_spx_data[spx_index].accum[5] / d_spx_data[spx_index].accum[3];
     }
 }
 
