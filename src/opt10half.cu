@@ -64,6 +64,7 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     int j_center = y / spx_size;
 
     //if (cc==0) { //OPT6
+    int sum;
     for (int yidx=0; yidx<pix_at_a_time; ++yidx) {
 	if ((y+yidx)>=pix_height) break;
         int pix_index = (y + yidx) * pix_width + x;
@@ -71,17 +72,17 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
         int j = d_own_data[pix_index].j;
         int nx = (i<i_center) ? 0 : ((i>i_center) ? 2 : 1);
         int ny = (j<j_center) ? 0 : ((j>j_center) ? 2 : 1);
-        acc[0][ny][nx][sy][sx] = (int)d_pix_data[pix_index].l
+        acc[0][ny][nx][sy][sx] = (int)d_pix_data[pix_index].l / 2
             + (yidx?(acc[0][ny][nx][sy][sx]):0);
-        acc[1][ny][nx][sy][sx] = (int)d_pix_data[pix_index].a
+        acc[1][ny][nx][sy][sx] = (int)d_pix_data[pix_index].a / 2
             + (yidx?(acc[1][ny][nx][sy][sx]):0);
-        acc[2][ny][nx][sy][sx] = (int)d_pix_data[pix_index].b
+        acc[2][ny][nx][sy][sx] = (int)d_pix_data[pix_index].b / 2
             + (yidx?(acc[2][ny][nx][sy][sx]):0);
-        acc[3][ny][nx][sy][sx] = (int)1
+        sum = acc[3][ny][nx][sy][sx] = (int)1
             + (yidx?(acc[3][ny][nx][sy][sx]):0);
-        acc[4][ny][nx][sy][sx] = ((int)x - (i_center * spx_size))
+        acc[4][ny][nx][sy][sx] = ((int)x - (i_center * spx_size)) / 2
             + (yidx?(acc[4][ny][nx][sy][sx]):0);
-        acc[5][ny][nx][sy][sx] = ((int)(y+yidx) - (j_center * spx_size))
+        acc[5][ny][nx][sy][sx] = ((int)(y+yidx) - (j_center * spx_size)) / 2
             + (yidx?(acc[5][ny][nx][sy][sx]):0);
     }
     //} //OPT6
@@ -153,11 +154,11 @@ __global__ void k_averaging(spx_data* d_spx_data)
     if (i < spx_width && j < spx_height)
     {
         int spx_index = j * spx_width + i;
-        d_spx_data[spx_index].l = d_spx_data[spx_index].accum[0] / d_spx_data[spx_index].accum[3];
-        d_spx_data[spx_index].a = d_spx_data[spx_index].accum[1] / d_spx_data[spx_index].accum[3];
-        d_spx_data[spx_index].b = d_spx_data[spx_index].accum[2] / d_spx_data[spx_index].accum[3];
-        d_spx_data[spx_index].x = d_spx_data[spx_index].accum[4] / d_spx_data[spx_index].accum[3];
-        d_spx_data[spx_index].y = d_spx_data[spx_index].accum[5] / d_spx_data[spx_index].accum[3];
+        d_spx_data[spx_index].l = 2*d_spx_data[spx_index].accum[0] / d_spx_data[spx_index].accum[3];
+        d_spx_data[spx_index].a = 2*d_spx_data[spx_index].accum[1] / d_spx_data[spx_index].accum[3];
+        d_spx_data[spx_index].b = 2*d_spx_data[spx_index].accum[2] / d_spx_data[spx_index].accum[3];
+        d_spx_data[spx_index].x = 2*d_spx_data[spx_index].accum[4] / d_spx_data[spx_index].accum[3];
+        d_spx_data[spx_index].y = 2*d_spx_data[spx_index].accum[5] / d_spx_data[spx_index].accum[3];
     }
 }
 
