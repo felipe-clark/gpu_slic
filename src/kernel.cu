@@ -38,11 +38,11 @@ __global__ void k_cumulativeCountOrig(const pix_data* d_pix_data, const own_data
 
 __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data* d_own_data, spx_data* d_spx_data)
 {
-    __shared__ int acc[6][3][3][4][35]; //LAB+count, 3x3 neighbors, 8x32 values
+    __shared__ int acc[6][3][3][2][35]; //LAB+count, 3x3 neighbors, 8x32 values
     const int memX = 3; // Extra added to X over 32 to avoid memory bank conflicts
-    const int memY = 0; // Extra added to Y over 4 for same reason
+    const int memY = 0; // Extra added to Y over 2 for same reason
     const int arraySize=6*3*3;
-    const int dimensions=(4 + memY)*(32 + memX);
+    const int dimensions=(2 + memY)*(32 + memX);
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = (blockIdx.y * blockDim.y + threadIdx.y) * pix_at_a_time / OPT6;
@@ -90,14 +90,14 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
 
     // Collapse over X and Y
     int tid = threadIdx.y * blockDim.x + threadIdx.x;
-    for (int step=32*4/2; step>0; step /= 2)
+    for (int step=32*2/2; step>0; step /= 2)
     {
         int locationIndex = tid % step;
         int threadGroup = tid / step;
 		
         //int maxThreadGroup = dimensions / step;
         //int maxThreadGroup = blockDim.x * blockDim.y / step;
-	int maxThreadGroup = 32 * 4 * OPT6 / step; //OPT6
+	int maxThreadGroup = 32 * 2 * OPT6 / step; //OPT6
 	
         int maxLoopIndex = (arraySize + maxThreadGroup - 1) / maxThreadGroup;
 
