@@ -52,7 +52,9 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     int cc = threadIdx.y % OPT6;
     int ccs = 0; // 0 or cc ?
     int ccstep = 1; // 1 or OPT6 value ?
+    if (cc == 0) {
     for (int nx=0;nx<3;++nx) for (int ny=0;ny<3;++ny) for(int c=ccs;c<6;c+=ccstep) acc[c][ny][nx][sy][sx]=0;
+    }
     //__syncthreads(); // Sometimes needed for OPT6
 
     int i_center = blockIdx.x * blockDim.x / spx_size;
