@@ -71,8 +71,8 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     acc[1][ny][nx][sy][sx] = d_pix_data[pix_index].a;
     acc[2][ny][nx][sy][sx] = d_pix_data[pix_index].b;
     acc[3][ny][nx][sy][sx] = 1;
-    acc[4][ny][nx][sy][sx] = x - i_center * spx_size;
-    acc[5][ny][nx][sy][sx] = y - j_center * spx_size;
+    acc[4][ny][nx][sy][sx] = x - (i_center * spx_size);
+    acc[5][ny][nx][sy][sx] = y - (j_center * spx_size);
     } //OPT6
    
     __syncthreads();
@@ -124,12 +124,14 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
 
             int spx_index = j * spx_width + i;
 
+	    int num = acc[3][ny][nx][0][0];
             atomicAdd(&(d_spx_data[spx_index].accum[0]), (int)acc[0][ny][nx][0][0]);
             atomicAdd(&(d_spx_data[spx_index].accum[1]), (int)acc[1][ny][nx][0][0]);
             atomicAdd(&(d_spx_data[spx_index].accum[2]), (int)acc[2][ny][nx][0][0]);
-            atomicAdd(&(d_spx_data[spx_index].accum[3]), (int)acc[3][ny][nx][0][0]);
-            atomicAdd(&(d_spx_data[spx_index].accum[4]), (int)acc[4][ny][nx][0][0] + i_center * spx_size);
-            atomicAdd(&(d_spx_data[spx_index].accum[5]), (int)acc[5][ny][nx][0][0] + j_center * spx_size);
+            atomicAdd(&(d_spx_data[spx_index].accum[3]), num);
+            atomicAdd(&(d_spx_data[spx_index].accum[4]), (int)(acc[4][ny][nx][0][0]) + i_center * spx_size * num);
+            atomicAdd(&(d_spx_data[spx_index].accum[5]), (int)(acc[5][ny][nx][0][0]) + j_center * spx_size * num);
+            if (i_center==30 && j_center==15 && d_spx_data[spx_index].accum[3]>0) printf("ic:%d jc:%d x:%d y:%d, qty:%d\n",i_center,j_center,d_spx_data[spx_index].accum[4],d_spx_data[spx_index].accum[5], d_spx_data[spx_index].accum[3]);
         }
     }
 }
@@ -146,8 +148,8 @@ __global__ void k_averaging(spx_data* d_spx_data)
         d_spx_data[spx_index].l = d_spx_data[spx_index].accum[0] / d_spx_data[spx_index].accum[3];
         d_spx_data[spx_index].a = d_spx_data[spx_index].accum[1] / d_spx_data[spx_index].accum[3];
         d_spx_data[spx_index].b = d_spx_data[spx_index].accum[2] / d_spx_data[spx_index].accum[3];
-        d_spx_data[spx_index].x = d_spx_data[spx_index].accum[4] / d_spx_data[spx_index].accum[3];
-        d_spx_data[spx_index].y = d_spx_data[spx_index].accum[5] / d_spx_data[spx_index].accum[3];
+        //d_spx_data[spx_index].x = d_spx_data[spx_index].accum[4] / d_spx_data[spx_index].accum[3];
+        //d_spx_data[spx_index].y = d_spx_data[spx_index].accum[5] / d_spx_data[spx_index].accum[3];
     }
 }
 
