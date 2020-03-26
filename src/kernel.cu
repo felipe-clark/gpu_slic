@@ -109,31 +109,24 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
         __syncthreads();
     }
 
-    if (tid != 0) return;
+    if (tid >= arraySize) return;
     
     // Now, acc[c][ny][nx][0][0] has the values we need
-    for (int ny=0; ny<3; ny++)
-    {
-        int j = j_center + ny - 1;
-		if (j<0 || j>=spx_height) continue;
+    int c = tid % 6;
+    tid /= 6;
+    int nx = tid % 3;
+    int ny = tid / 3;
+
+    int j = j_center + ny - 1;
+    if (j<0 || j>=spx_height) return;
 		
-        for (int nx=0; nx<3; nx++)
-        {
-            int i = i_center + nx - 1;
-            if (i<0 || i>=spx_width) continue;
+    int i = i_center + nx - 1;
+    if (i<0 || i>=spx_width) return;
 
-            int spx_index = j * spx_width + i;
-
-	    int num = acc[3][ny][nx][0][0];
-            atomicAdd(&(d_spx_data[spx_index].accum[0]), (int)acc[0][ny][nx][0][0]);
-            atomicAdd(&(d_spx_data[spx_index].accum[1]), (int)acc[1][ny][nx][0][0]);
-            atomicAdd(&(d_spx_data[spx_index].accum[2]), (int)acc[2][ny][nx][0][0]);
-            atomicAdd(&(d_spx_data[spx_index].accum[3]), num);
-            atomicAdd(&(d_spx_data[spx_index].accum[4]), (int)(acc[4][ny][nx][0][0]) + i_center * spx_size * num);
-            atomicAdd(&(d_spx_data[spx_index].accum[5]), (int)(acc[5][ny][nx][0][0]) + j_center * spx_size * num);
-            //if (i_center==30 && j_center==15 && d_spx_data[spx_index].accum[3]>0) printf("ic:%d jc:%d x:%d y:%d, qty:%d\n",i_center,j_center,d_spx_data[spx_index].accum[4],d_spx_data[spx_index].accum[5], d_spx_data[spx_index].accum[3]);
-        }
-    }
+    int spx_index = j * spx_width + i;
+    atomicAdd(&(d_spx_data[spx_index].accum[c]), (int)acc[c][ny][nx][0][0] +
+        (c>3 ? (((c==4)?i_center:j_center)*spx_size*acc[3][ny][nx][0][0]) : 0));
+    //if (i_center==30 && j_center==15 && d_spx_data[spx_index].accum[3]>0) printf("ic:%d jc:%d x:%d y:%d, qty:%d\n",i_center,j_center,d_spx_data[spx_index].accum[4],d_spx_data[spx_index].accum[5], d_spx_data[spx_index].accum[3]);
 }
 
 
