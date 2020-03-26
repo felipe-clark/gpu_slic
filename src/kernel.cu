@@ -40,9 +40,11 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
 {
     // If we do 16 instead of 8, only have enough memory for a short, not an int,
     // and 16*32*255 does not fit in a short
-    __shared__ unsigned short acc[6][3][3][8][32]; //LAB+count, 3x3 neighbors, 8x32 values
+    __shared__ unsigned short acc[6][3][3][8][35]; //LAB+count, 3x3 neighbors, 8x32 values
+    const int memX = 3; // Extra added to X over 32 to avoid memory bank conflicts
+    const int memY = 0; // Extra added to Y over 8 for same reason
     const int arraySize=6*3*3;
-    const int dimensions=8*32;
+    const int dimensions=(8 + memY)*(32 + memX);
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = (blockIdx.y * blockDim.y + threadIdx.y) / OPT6;
@@ -102,8 +104,12 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
 
 	    //printf("i %d d %d l %d s %d t %d ts %d\n", innerIndex, dimensions, locationIndex, step,
                 //innerIndex*dimensions+locationIndex, innerIndex*dimensions+locationIndex+step);
-            *(accptr + (innerIndex*dimensions + locationIndex)) += 
-                *(accptr + (innerIndex*dimensions + locationIndex + step));
+	    
+	    int loc2 = locationIndex + step;
+	    int loc = locationIndex + memX*(locationIndex/32);
+	    loc2 += memX*(loc2/32);
+            *(accptr + (innerIndex*dimensions + loc)) += 
+                *(accptr + (innerIndex*dimensions + loc2));
         }
 		
         __syncthreads();
@@ -396,6 +402,13 @@ __global__ void k_ownershipOpt2(const pix_data* d_pix_data, own_data* d_own_data
 
 __global__ void k_reset(spx_data* d_spx_data)
 {
+    // Shared memory conflict test
+    // Removing the "*64" below results in no bank conflicts, so adjacent threads
+    // reading adjacent shorts do not cause conflicts.
+    //__shared__ unsigned short arr[32 * 2 * 100];
+    //int a=arr[threadIdx.x * 64];
+    //d_spx_data[0].accum[0]=a;
+
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
 
