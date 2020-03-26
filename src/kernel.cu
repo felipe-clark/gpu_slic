@@ -40,9 +40,9 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
 {
     // If we do 16 instead of 8, only have enough memory for a short, not an int,
     // and 16*32*255 does not fit in a short
-    __shared__ int acc[6][3][3][4][32]; //LAB+count, 3x3 neighbors, 8x32 values
-	const int arraySize=6*3*3;
-	const int dimensions=4*32;
+    __shared__ short acc[6][3][3][8][32]; //LAB+count, 3x3 neighbors, 8x32 values
+    const int arraySize=6*3*3;
+    const int dimensions=8*32;
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = (blockIdx.y * blockDim.y + threadIdx.y) / OPT6;
@@ -53,7 +53,7 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     int ccs = 0; // 0 or cc ?
     int ccstep = 1; // 1 or OPT6 value ?
     if (cc == 0) {
-    for (int nx=0;nx<3;++nx) for (int ny=0;ny<3;++ny) for(int c=ccs;c<6;c+=ccstep) acc[c][ny][nx][sy][sx]=0;
+        for (int nx=0;nx<3;++nx) for (int ny=0;ny<3;++ny) for(int c=ccs;c<6;c+=ccstep) acc[c][ny][nx][sy][sx]=0;
     }
     //__syncthreads(); // Sometimes needed for OPT6
 
@@ -71,40 +71,42 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     acc[1][ny][nx][sy][sx] = d_pix_data[pix_index].a;
     acc[2][ny][nx][sy][sx] = d_pix_data[pix_index].b;
     acc[3][ny][nx][sy][sx] = 1;
-    acc[4][ny][nx][sy][sx] = x;
-    acc[5][ny][nx][sy][sx] = y;
+    acc[4][ny][nx][sy][sx] = x - i_center * spx_size;
+    acc[5][ny][nx][sy][sx] = y - j_center * spx_size;
     } //OPT6
    
     __syncthreads();
 	
-	int* accptr = (int*)acc;
+    short* accptr = (short*)acc;
 
     // Collapse over X and Y
     int tid = threadIdx.y * blockDim.x + threadIdx.x;
-    for (int step=32*4/2; step>0; step /= 2)
+    for (int step=32*8/2; step>0; step /= 2)
     {
-		int locationIndex = tid % step;
-		int threadGroup = tid / step;
+        int locationIndex = tid % step;
+        int threadGroup = tid / step;
 		
-		//int maxThreadGroup = dimensions / step;
-		//int maxThreadGroup = blockDim.x * blockDim.y / step;
-	    int maxThreadGroup = 32 * 4 * OPT6 / step; //OPT6
+        //int maxThreadGroup = dimensions / step;
+        //int maxThreadGroup = blockDim.x * blockDim.y / step;
+	int maxThreadGroup = 32 * 8 * OPT6 / step; //OPT6
 	
-		int maxLoopIndex = (arraySize + maxThreadGroup - 1) / maxThreadGroup;
+        int maxLoopIndex = (arraySize + maxThreadGroup - 1) / maxThreadGroup;
 
-		// Divide arraySize (3*3*6=54) by max threadGroup + 1 and that's the loop
-		// Actual a = loop index * (max threadGroup + 1) + innerIndex
+        // Divide arraySize (3*3*6=54) by max threadGroup + 1 and that's the loop
+        // Actual a = loop index * (max threadGroup + 1) + innerIndex
 	
-		for (int loopIndex=0; loopIndex<maxLoopIndex; loopIndex++)
+        for (int loopIndex=0; loopIndex<maxLoopIndex; loopIndex++)
         {
-			int innerIndex = loopIndex * maxThreadGroup + threadGroup;
-			if (innerIndex >= arraySize) continue; 
+            int innerIndex = loopIndex * maxThreadGroup + threadGroup;
+            if (innerIndex >= arraySize) continue; 
 
+	    //printf("i %d d %d l %d s %d t %d ts %d\n", innerIndex, dimensions, locationIndex, step,
+                //innerIndex*dimensions+locationIndex, innerIndex*dimensions+locationIndex+step);
             *(accptr + (innerIndex*dimensions + locationIndex)) += 
                 *(accptr + (innerIndex*dimensions + locationIndex + step));
         }
 		
-		__syncthreads();
+        __syncthreads();
     }
 
     if (tid != 0) return;
@@ -122,12 +124,12 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
 
             int spx_index = j * spx_width + i;
 
-			atomicAdd(&(d_spx_data[spx_index].accum[0]), (int)acc[0][ny][nx][0][0]);
-			atomicAdd(&(d_spx_data[spx_index].accum[1]), (int)acc[1][ny][nx][0][0]);
-			atomicAdd(&(d_spx_data[spx_index].accum[2]), (int)acc[2][ny][nx][0][0]);
-			atomicAdd(&(d_spx_data[spx_index].accum[3]), (int)acc[3][ny][nx][0][0]);
-			atomicAdd(&(d_spx_data[spx_index].accum[4]), (int)acc[4][ny][nx][0][0]);
-			atomicAdd(&(d_spx_data[spx_index].accum[5]), (int)acc[5][ny][nx][0][0]);
+            atomicAdd(&(d_spx_data[spx_index].accum[0]), (int)acc[0][ny][nx][0][0]);
+            atomicAdd(&(d_spx_data[spx_index].accum[1]), (int)acc[1][ny][nx][0][0]);
+            atomicAdd(&(d_spx_data[spx_index].accum[2]), (int)acc[2][ny][nx][0][0]);
+            atomicAdd(&(d_spx_data[spx_index].accum[3]), (int)acc[3][ny][nx][0][0]);
+            atomicAdd(&(d_spx_data[spx_index].accum[4]), (int)acc[4][ny][nx][0][0] + i_center * spx_size);
+            atomicAdd(&(d_spx_data[spx_index].accum[5]), (int)acc[5][ny][nx][0][0] + j_center * spx_size);
         }
     }
 }
