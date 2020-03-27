@@ -97,7 +97,7 @@ void enforce_label_connectivity(own_data* o_own_data, const int width,
 
 // Kernels
 const int OPT6 = 1; //For optimization OPT6
-const int pix_at_a_time = 64; //For optimization Opt10
+const int pix_at_a_time = 128; //For optimization Opt10
 //#define BANKDEBUG // Debug bank conflicts
 #define k_cumulativeCount k_cumulativeCountOpt1
 __global__ void k_cumulativeCountOrig(const pix_data* d_pix_data, const own_data* d_own_data, spx_data* d_spx_data);

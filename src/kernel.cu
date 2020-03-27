@@ -38,30 +38,23 @@ __global__ void k_cumulativeCountOrig(const pix_data* d_pix_data, const own_data
 
 __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data* d_own_data, spx_data* d_spx_data)
 {
-    __shared__ int acc[6][3][3][2][35]; //LAB+count, 3x3 neighbors, 8x32 values
+    //bool debug = (blockIdx.x == 20 && blockIdx.y == 30 && threadIdx.x == 5);
+
+    __shared__ int acc[6][3][3][35]; //LAB+count, 3x3 neighbors, 8x32 values
     const int memX = 3; // Extra added to X over 32 to avoid memory bank conflicts
-    const int memY = 0; // Extra added to Y over 2 for same reason
     const int arraySize=6*3*3;
-    const int dimensions=(2 + memY)*(32 + memX);
+    const int dimensions=32 + memX;
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = (blockIdx.y * blockDim.y + threadIdx.y) * pix_at_a_time / OPT6;
+    int y = blockIdx.y * pix_at_a_time;
     int sx = threadIdx.x;
-    int sy = threadIdx.y / OPT6;
 
-    //int cc = 0; //threadIdx.y % OPT6;
-    const int ccs = 0; // 0 or cc ?
-    const int ccstep = 1; // 1 or OPT6 value ?
-    //if (cc == 0) {
-        for (int nx=0;nx<3;++nx) for (int ny=0;ny<3;++ny) for(int c=ccs;c<6;c+=ccstep) acc[c][ny][nx][sy][sx]=0;
-    //}
-    //__syncthreads(); // Sometimes needed for OPT6
+    for (int nx=0;nx<3;++nx) for (int ny=0;ny<3;++ny) for(int c=0;c<6;++c) acc[c][ny][nx][sx]=0;
 
     int i_center = blockIdx.x * blockDim.x / spx_size;
-    //int j_center = (blockIdx.y * blockDim.y * pix_at_a_time) / spx_size; //OPT6
     int j_center = y / spx_size;
+    //if (debug) printf("x: %d y: %d ic:%d jc: %d\n", x, y, i_center, j_center);
 
-    //if (cc==0) { //OPT6
     for (int yidx=0; yidx<pix_at_a_time; ++yidx) {
 	if ((y+yidx)>=pix_height) break;
         int pix_index = (y + yidx) * pix_width + x;
@@ -69,37 +62,40 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
         int j = d_own_data[pix_index].j;
         int nx = (i<i_center) ? 0 : ((i>i_center) ? 2 : 1);
         int ny = (j<j_center) ? 0 : ((j>j_center) ? 2 : 1);
-        acc[0][ny][nx][sy][sx] = (int)d_pix_data[pix_index].l
-            + (yidx?(acc[0][ny][nx][sy][sx]):0);
-        acc[1][ny][nx][sy][sx] = (int)d_pix_data[pix_index].a
-            + (yidx?(acc[1][ny][nx][sy][sx]):0);
-        acc[2][ny][nx][sy][sx] = (int)d_pix_data[pix_index].b
-            + (yidx?(acc[2][ny][nx][sy][sx]):0);
-        acc[3][ny][nx][sy][sx] = (int)1
-            + (yidx?(acc[3][ny][nx][sy][sx]):0);
-        acc[4][ny][nx][sy][sx] = ((int)x - (i_center * spx_size))
-            + (yidx?(acc[4][ny][nx][sy][sx]):0);
-        acc[5][ny][nx][sy][sx] = ((int)(y+yidx) - (j_center * spx_size))
-            + (yidx?(acc[5][ny][nx][sy][sx]):0);
+	//if (debug && yidx==62) printf("A i: %d j:%d nx: %d ny: %d pi: %d a0: %d\n",i,j,nx,ny,pix_index,
+            //acc[0][ny][nx][sx]);
+        acc[0][ny][nx][sx] = (int)d_pix_data[pix_index].l
+            + (yidx?(acc[0][ny][nx][sx]):0);
+	//if (debug && yidx==62) printf("B i: %d j:%d nx: %d ny: %d pi: %d a0: %d\n",i,j,nx,ny,pix_index,
+            //acc[0][ny][nx][sx]);
+        acc[1][ny][nx][sx] = (int)d_pix_data[pix_index].a
+            + (yidx?(acc[1][ny][nx][sx]):0);
+        acc[2][ny][nx][sx] = (int)d_pix_data[pix_index].b
+            + (yidx?(acc[2][ny][nx][sx]):0);
+        acc[3][ny][nx][sx] = (int)1
+            + (yidx?(acc[3][ny][nx][sx]):0);
+        acc[4][ny][nx][sx] = ((int)x - (i_center * spx_size))
+            + (yidx?(acc[4][ny][nx][sx]):0);
+        acc[5][ny][nx][sx] = ((int)(y+yidx) - (j_center * spx_size))
+            + (yidx?(acc[5][ny][nx][sx]):0);
     }
-    //} //OPT6
    
     __syncthreads();
 	
     int* accptr = (int*)acc;
 
     // Collapse over X and Y
-    int tid = threadIdx.y * blockDim.x + threadIdx.x;
-    for (int step=32*2/2; step>0; step /= 2)
+    for (int step=32/2; step>0; step /= 2)
     {
-        int locationIndex = tid % step;
-        int threadGroup = tid / step;
+        int locationIndex = sx % step;
+        int threadGroup = sx / step;
 		
-        //int maxThreadGroup = dimensions / step;
-        //int maxThreadGroup = blockDim.x * blockDim.y / step;
-	int maxThreadGroup = 32 * 2 * OPT6 / step; //OPT6
+	int maxThreadGroup = 32/step;
 	
         int maxLoopIndex = (arraySize + maxThreadGroup - 1) / maxThreadGroup;
+
+	//if (debug) printf("S:%d LOC:%d TG:%d/MTG:%d MLI:%d\n",
+            //step, locationIndex, threadGroup, maxThreadGroup, maxLoopIndex);
 
         // Divide arraySize (3*3*6=54) by max threadGroup + 1 and that's the loop
         // Actual a = loop index * (max threadGroup + 1) + innerIndex
@@ -122,13 +118,28 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
         __syncthreads();
     }
 
-    if (tid >= arraySize) return;
     
-    // Now, acc[c][ny][nx][0][0] has the values we need
-    int c = tid % 6;
-    tid /= 6;
-    int nx = tid % 3;
-    int ny = tid / 3;
+    // Now, acc[c][ny][nx][0] has the values we need
+
+    /*
+    for (int nx=0;nx<3;nx++) for (int ny=0;ny<3;ny++) for(int c=0;c<6;c++){
+    int j = j_center + ny - 1;
+    if (j<0 || j>=spx_height) return;
+		
+    int i = i_center + nx - 1;
+    if (i<0 || i>=spx_width) return;
+
+    int spx_index = j * spx_width + i;
+	    atomicAdd(&(d_spx_data[spx_index].accum[c]), (int)acc[c][ny][nx][0]);
+    }
+    return;
+    */
+
+    int c = sx % 3;
+    sx /= 3;
+    int nx = sx % 3;
+    int ny = sx / 3;
+    if (ny>=3) return;
 
     int j = j_center + ny - 1;
     if (j<0 || j>=spx_height) return;
@@ -137,8 +148,16 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     if (i<0 || i>=spx_width) return;
 
     int spx_index = j * spx_width + i;
-    atomicAdd(&(d_spx_data[spx_index].accum[c]), (int)acc[c][ny][nx][0][0] +
-        (c>3 ? (((c==4)?i_center:j_center)*spx_size*acc[3][ny][nx][0][0]) : 0));
+
+    //Opt128
+    //#pragma unroll
+    //for (int adj=0;adj<2;adj++)
+    //{
+        atomicAdd(&(d_spx_data[spx_index].accum[c]), (int)acc[c][ny][nx][0]);
+        atomicAdd(&(d_spx_data[spx_index].accum[c+3]), (int)acc[c+3][ny][nx][0] +
+            ((c+3)>3 ? ((((c+3)==4)?i_center:j_center)*spx_size*acc[3][ny][nx][0]) : 0));
+    //}
+    
     //if (i_center==30 && j_center==15 && d_spx_data[spx_index].accum[3]>0) printf("ic:%d jc:%d x:%d y:%d, qty:%d\n",i_center,j_center,d_spx_data[spx_index].accum[4],d_spx_data[spx_index].accum[5], d_spx_data[spx_index].accum[3]);
 }
 
