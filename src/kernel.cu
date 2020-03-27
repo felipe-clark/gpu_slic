@@ -40,10 +40,10 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
 {
     //bool debug = (blockIdx.x == 20 && blockIdx.y == 30 && threadIdx.x == 5);
 
-    __shared__ int acc[6][3][3][35]; //LAB+count, 3x3 neighbors, 8x32 values
+    __shared__ int acc[6][3][3][67]; //LAB+count, 3x3 neighbors, 8x32 values
     const int memX = 3; // Extra added to X over 32 to avoid memory bank conflicts
     const int arraySize=6*3*3;
-    const int dimensions=32 + memX;
+    const int dimensions=64 + memX;
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * pix_at_a_time;
@@ -85,12 +85,12 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     int* accptr = (int*)acc;
 
     // Collapse over X and Y
-    for (int step=32/2; step>0; step /= 2)
+    for (int step=64/2; step>0; step /= 2)
     {
         int locationIndex = sx % step;
         int threadGroup = sx / step;
 		
-	int maxThreadGroup = 32/step;
+	int maxThreadGroup = 64/step;
 	
         int maxLoopIndex = (arraySize + maxThreadGroup - 1) / maxThreadGroup;
 
@@ -109,8 +109,8 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
                 //innerIndex*dimensions+locationIndex, innerIndex*dimensions+locationIndex+step);
 	    
 	    int loc2 = locationIndex + step;
-	    int loc = locationIndex + memX*(locationIndex/32);
-	    loc2 += memX*(loc2/32);
+	    int loc = locationIndex + memX*(locationIndex/64);
+	    loc2 += memX*(loc2/64);
             *(accptr + (innerIndex*dimensions + loc)) += 
                 *(accptr + (innerIndex*dimensions + loc2));
         }
@@ -135,11 +135,11 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     return;
     */
 
-    int c = sx % 3;
-    sx /= 3;
+    if (sx >= arraySize) return;
+    int c = sx % 6;
+    sx /= 6;
     int nx = sx % 3;
     int ny = sx / 3;
-    if (ny>=3) return;
 
     int j = j_center + ny - 1;
     if (j<0 || j>=spx_height) return;
@@ -153,9 +153,9 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     //#pragma unroll
     //for (int adj=0;adj<2;adj++)
     //{
-        atomicAdd(&(d_spx_data[spx_index].accum[c]), (int)acc[c][ny][nx][0]);
-        atomicAdd(&(d_spx_data[spx_index].accum[c+3]), (int)acc[c+3][ny][nx][0] +
-            ((c+3)>3 ? ((((c+3)==4)?i_center:j_center)*spx_size*acc[3][ny][nx][0]) : 0));
+        //atomicAdd(&(d_spx_data[spx_index].accum[c]), (int)acc[c][ny][nx][0]);
+        atomicAdd(&(d_spx_data[spx_index].accum[c]), (int)acc[c][ny][nx][0] +
+            (c>3 ? (((c==4)?i_center:j_center)*spx_size*acc[3][ny][nx][0]) : 0));
     //}
     
     //if (i_center==30 && j_center==15 && d_spx_data[spx_index].accum[3]>0) printf("ic:%d jc:%d x:%d y:%d, qty:%d\n",i_center,j_center,d_spx_data[spx_index].accum[4],d_spx_data[spx_index].accum[5], d_spx_data[spx_index].accum[3]);
