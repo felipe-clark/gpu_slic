@@ -84,7 +84,7 @@ struct spx_data
 
     // Accumulators for superpixel averaging
     // L, A, B, num, x, y
-    int accum[6];
+    int accum[3][3][6];
 };
 
 // Initialization
