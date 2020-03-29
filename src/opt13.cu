@@ -193,7 +193,9 @@ __global__ void k_averaging(spx_data* d_spx_data)
 
 __global__ void k_ownershipOpt(const pix_data* d_pix_data, own_data* d_own_data, const spx_data* d_spx_data)
 {
-    __shared__ spx_data spx[9 * 32];
+    return; // This no longer works after Opt13, but ownershipOpt2 should work
+    //__shared__ spx_data spx[9 * 32];
+    __shared__ spx_data spx[1 * 1];
 
     float min_dist = 10E99;// max_float;
     int min_i = 0;
