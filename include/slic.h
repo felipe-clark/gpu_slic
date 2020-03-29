@@ -53,6 +53,8 @@ struct own_data
     // super pixel matrix
     char i;
     char j;
+    char pad1;
+    char pad2;
 
     public:
     bool isValid() { return i>=0; }
