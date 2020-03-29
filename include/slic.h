@@ -51,8 +51,8 @@ struct own_data
 {
     // Coordinates of the centroid in the
     // super pixel matrix
-    int i;
-    int j;
+    char i;
+    char j;
 
     public:
     bool isValid() { return i>=0; }
