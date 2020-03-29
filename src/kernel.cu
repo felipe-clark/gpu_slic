@@ -10,6 +10,18 @@ void initializeSlicFactor()
     cudaError_t cudaStatus = cudaMemcpyToSymbol(slic_factor, slic_factor_hp, sizeof(float));
 }
 
+__global__ void k_measure(int* d_device_location, int target)
+{
+    int accum = threadIdx.x;
+    for (int i=1; i<100; i++) for (int j=1; j<1000; j++)
+    {
+        accum *= j;
+	accum = accum ^ (threadIdx.y << j / 100);
+	accum += target;
+    }
+    if (accum == target) *d_device_location = 0;
+}
+
 __global__ void k_cumulativeCountOrig(const pix_data* d_pix_data, const own_data* d_own_data, spx_data* d_spx_data)
 {
     //if (threadIdx.x == 0 && threadIdx.y == 0 && blockIdx.x == 0 && blockIdx.y == 0)

@@ -96,6 +96,8 @@ void enforce_label_connectivity(own_data* o_own_data, const int width,
     const int height, own_data* n_own_data, int n_spx);
 
 // Kernels
+__global__ void k_measure(int* d_device_location, int target);
+
 const int OPT6 = 1; //For optimization OPT6
 const int pix_at_a_time = 128; //For optimization Opt10
 //#define BANKDEBUG // Debug bank conflicts

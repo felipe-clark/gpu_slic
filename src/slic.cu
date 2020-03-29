@@ -80,6 +80,9 @@ int main(int argc, char** argv)
 
     // -------------------- The Kernel magic --------------------
 
+
+    k_measure<<<dim3(10,10), dim3(32,32)>>>(0,1234);
+
     // Original cumulativeSum kernel
     dim3 pix_threadsPerBlock( 32, 8 ) ;
     int pix_blockPerGridX = (pix_width + pix_threadsPerBlock.x-1)/pix_threadsPerBlock.x;
