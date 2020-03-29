@@ -41,7 +41,7 @@ struct pix_data
     unsigned char l;
     unsigned char a;
     unsigned char b;
-    //unsigned char padding;
+    unsigned char padding;
 };
 
 // Ownership
