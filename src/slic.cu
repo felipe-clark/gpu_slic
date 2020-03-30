@@ -101,6 +101,7 @@ int main(int argc, char** argv)
     int pix_blockPerGridXOpt = (pix_width + pix_threadsPerBlockOpt.x-1)/pix_threadsPerBlockOpt.x;
     int pix_blockPerGridYOpt = (pix_height + pix_threadsPerBlockOpt.y-1)/pix_threadsPerBlockOpt.y;
     dim3 pix_blocksPerGridOpt(pix_blockPerGridXOpt, OPT6*(pix_blockPerGridYOpt+pix_at_a_time-1)/pix_at_a_time, 1);
+    printf("Y:%d\n", pix_blocksPerGridOpt.y);
 
     //k_ownership<<<pix_blocksPerGridOwn, pix_threadsPerBlockOwn>>>(d_pix_data, d_own_data, d_spx_data);
     
@@ -120,7 +121,7 @@ int main(int argc, char** argv)
 
     k_averaging<<<spx_blocksPerGrid, spx_threadsPerBlock>>>(d_spx_data);
 
-    const int iterations = 300;
+    const int iterations = 10;
     cudaDeviceSynchronize();
     double ts_start = getTimestamp();
     for (int i = 0 ; i<iterations; i++)
@@ -201,14 +202,14 @@ void initialize_spx(spx_data* h_spx_data)
             h_spx_data[spx_index].x = (2 * spx_size * i + spx_size)/2;
             h_spx_data[spx_index].y = (2 * spx_size * j + spx_size)/2;
 
-	    for (int ny=0; ny<3; ++ny) for (int nx=0; nx<3; ++nx) {
-                h_spx_data[spx_index].accum[ny][nx][0] = 0;
-                h_spx_data[spx_index].accum[ny][nx][1] = 0;
-                h_spx_data[spx_index].accum[ny][nx][2] = 0;
-                h_spx_data[spx_index].accum[ny][nx][3] = 0;
-                h_spx_data[spx_index].accum[ny][nx][4] = 0;
-                h_spx_data[spx_index].accum[ny][nx][5] = 0;
-	    }
+	    //for (int ny=0; ny<3; ++ny) for (int nx=0; nx<3; ++nx) {
+                h_spx_data[spx_index].accum/*[ny][nx]*/[0] = 0;
+                h_spx_data[spx_index].accum/*[ny][nx]*/[1] = 0;
+                h_spx_data[spx_index].accum/*[ny][nx]*/[2] = 0;
+                h_spx_data[spx_index].accum/*[ny][nx]*/[3] = 0;
+                h_spx_data[spx_index].accum/*[ny][nx]*/[4] = 0;
+                h_spx_data[spx_index].accum/*[ny][nx]*/[5] = 0;
+	    //}
         }
     }
 }
