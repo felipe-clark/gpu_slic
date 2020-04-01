@@ -356,28 +356,30 @@ __global__ void k_ownershipOpt2(const pix_data* d_pix_data, own_data* d_own_data
         if (tid < 5)
         {
             int value;
-	    int i = i_center + nx - 1;
-	    int j = j_center + ny - 1;
-	    if (i<0 || i>=spx_width || j<0 || j>=spx_height)
+	        int i = i_center + nx - 1;
+	        int j = j_center + ny - 1;
+            
+            if (i<0 || i>=spx_width || j<0 || j>=spx_height)
             {
                 value = -1;
             }
-	    else
+	        else
             {
-	        int spx_index = j * spx_width + i;
-	        const spx_data& spix = d_spx_data[spx_index];
-	        switch(tid) //TODO:Get rid of it by using better data struct.?
-	        {
+	            int spx_index = j * spx_width + i;
+	            const spx_data& spix = d_spx_data[spx_index];
+	            switch(tid) //TODO:Get rid of it by using better data struct.?
+	            {
                     case 0: value=spix.l; break;
-		    case 1: value=spix.a; break;
+		            case 1: value=spix.a; break;
                     case 2: value=spix.b; break;
-		    case 3: value=spix.x; break;
-		    case 4: value=spix.y; break;
+    		        case 3: value=spix.x; break;
+		            case 4: value=spix.y; break;
                 }
             }
             spx[ny][nx][tid] = value;
         }
-	__syncthreads();
+        
+        __syncthreads();
 
         int l = d_pix_data[pix_index].l;
         int a = d_pix_data[pix_index].a;
@@ -385,38 +387,35 @@ __global__ void k_ownershipOpt2(const pix_data* d_pix_data, own_data* d_own_data
 
         for (int ny=0; ny<3; ++ny) for (int nx=0; nx<3; ++nx)
         {
-                int* spix = spx[ny][nx];
-		if (spix[0]==-1) continue;
+            int* spix = spx[ny][nx];
+		    if (spix[0]==-1) continue;
 
-                int l_dist = l-spix[0];
-                l_dist *= l_dist;
-                int a_dist = a-spix[1];
-                a_dist *= a_dist;
-                int b_dist = b-spix[2];
-                b_dist *= b_dist;
-                int dlab = l_dist + a_dist + b_dist;
+            int l_dist = l-spix[0];
+            l_dist *= l_dist;
+            int a_dist = a-spix[1];
+            a_dist *= a_dist;
+            int b_dist = b-spix[2];
+            b_dist *= b_dist;
+            int dlab = l_dist + a_dist + b_dist;
 
-                int x_dist = x-spix[3];
-                x_dist *= x_dist;
-                int y_dist = y-spix[4];
-                y_dist *= y_dist;
-                int dxy = x_dist + y_dist;
+            int x_dist = x-spix[3];
+            x_dist *= x_dist;
+            int y_dist = y-spix[4];
+            y_dist *= y_dist;
+            int dxy = x_dist + y_dist;
 
-                float D = dlab + slic_factor * dxy;
+            float D = dlab + slic_factor * dxy;
 
-                if (D < min_dist)
-                {
+            if (D < min_dist)
+            {
                     min_dist = D;
                     min_i = i_center + nx - 1;
                     min_j = j_center + ny - 1;
-                }
+            }
         }
 
         d_own_data[pix_index].i = min_i;
         d_own_data[pix_index].j = min_j;
-
-        //d_own_data[pix_index].i = (i_center / 4) * 4;
-        //d_own_data[pix_index].j = (j_center / 4) * 4;
     }
 }
 
