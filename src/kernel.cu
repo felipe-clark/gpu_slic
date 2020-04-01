@@ -381,9 +381,16 @@ __global__ void k_ownershipOpt2(const pix_data* d_pix_data, own_data* d_own_data
         
         __syncthreads();
 
-        int l = d_pix_data[pix_index].l;
-        int a = d_pix_data[pix_index].a;
-        int b = d_pix_data[pix_index].b;
+        int lab_data = *((int*)(d_pix_data + pix_index));
+        pix_data px_data = *((pix_data*)(&lab_data));   
+
+        unsigned char l = px_data.l;
+        unsigned char a = px_data.a;
+        unsigned char b = px_data.b;
+
+        //int l = d_pix_data[pix_index].l;
+        //int a = d_pix_data[pix_index].a;
+        //int b = d_pix_data[pix_index].b;
 
         for (int ny=0; ny<3; ++ny) for (int nx=0; nx<3; ++nx)
         {
