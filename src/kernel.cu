@@ -375,7 +375,20 @@ __global__ void k_ownershipOpt2(const pix_data* d_pix_data, own_data* d_own_data
         int i_center = x/spx_size;
         int j_center = y/spx_size;
 
-	// Initialize SMEM
+        // Reading as a single blob
+        int lab_data = *((int*)(d_pix_data + pix_index));
+        pix_data px_data = *((pix_data*)(&lab_data));   
+
+        unsigned char l = px_data.l;
+        unsigned char a = px_data.a;
+        unsigned char b = px_data.b;
+
+        //  Reading as data structure
+        // int l = d_pix_data[pix_index].l;
+        // int a = d_pix_data[pix_index].a;
+        // int b = d_pix_data[pix_index].b;
+
+	    // Initialize SMEM
         int tid = threadIdx.x + blockDim.x * threadIdx.y;
         int nx = tid % 3;
         tid /= 3;
@@ -394,31 +407,39 @@ __global__ void k_ownershipOpt2(const pix_data* d_pix_data, own_data* d_own_data
 	        else
             {
 	            int spx_index = j * spx_width + i;
-	            const spx_data& spix = d_spx_data[spx_index];
+                // const spx_data& spix = d_spx_data[spx_index]; //TODO: This is compromising efficiency by 25%!
+
+                spx_data spix2;
+                memcpy(&spix2, &d_spx_data[spx_index], sizeof(spx_data));
+
+                // int* spx_data_lab = (int*)(&d_spx_data[spx_index].l);
+                // int64_t* spx_data_xy = (int64_t*)(&d_spx_data[spx_index].x);
+                
 	            switch(tid) //TODO:Get rid of it by using better data struct.?
 	            {
-                    case 0: value=spix.l; break;
-		            case 1: value=spix.a; break;
-                    case 2: value=spix.b; break;
-    		        case 3: value=spix.x; break;
-		            case 4: value=spix.y; break;
+                    // case 0: value = (*spx_data_lab >> 24  & 0xFF);      break;
+                    // case 1: value = (*spx_data_lab >> 16  & 0xFF);      break;
+                    // case 2: value = (*spx_data_lab >> 8  & 0xFF);       break;
+                    // case 3: value = (*spx_data_xy >> 32 & 0xFFFFFFFF);  break;
+                    // case 4: value = (*spx_data_xy & 0xFFFFFFFF);        break;
+
+                    // case 0: value=spix.l; break;
+		            // case 1: value=spix.a; break;
+                    // case 2: value=spix.b; break;
+    		        // case 3: value=spix.x; break;
+                    // case 4: value=spix.y; break;
+                    
+                    case 0: value=spix2.l; break;
+		            case 1: value=spix2.a; break;
+                    case 2: value=spix2.b; break;
+    		        case 3: value=spix2.x; break;
+		            case 4: value=spix2.y; break;
                 }
             }
             spx[ny][nx][tid] = value;
         }
         
         __syncthreads();
-
-        int lab_data = *((int*)(d_pix_data + pix_index));
-        pix_data px_data = *((pix_data*)(&lab_data));   
-
-        unsigned char l = px_data.l;
-        unsigned char a = px_data.a;
-        unsigned char b = px_data.b;
-
-        //int l = d_pix_data[pix_index].l;
-        //int a = d_pix_data[pix_index].a;
-        //int b = d_pix_data[pix_index].b;
 
         for (int ny=0; ny<3; ++ny) for (int nx=0; nx<3; ++nx)
         {
@@ -449,6 +470,14 @@ __global__ void k_ownershipOpt2(const pix_data* d_pix_data, own_data* d_own_data
             }
         }
 
+        // Writing as a blob (made it worse)
+        // This reaches 100% write efficiency,
+        // but runs slower than the code below
+        // int mins = min_i << 0 | min_j <<  8;
+        // *(int*)(d_own_data  + pix_index) = mins;
+
+        // Writing as data structure
+        // Write efficiency is only 25%!
         d_own_data[pix_index].i = min_i;
         d_own_data[pix_index].j = min_j;
     }
@@ -472,7 +501,7 @@ __global__ void k_reset(spx_data* d_spx_data)
 	//for (int ny=0; ny<3; ++ny) for (int nx=0; nx<3; ++nx) {
             d_spx_data[spx_index].accum/*[ny][nx]*/[0] = 0;
             d_spx_data[spx_index].accum/*[ny][nx]*/[1] = 0;
-	    d_spx_data[spx_index].accum/*[ny][nx]*/[2] = 0;
+	        d_spx_data[spx_index].accum/*[ny][nx]*/[2] = 0;
             d_spx_data[spx_index].accum/*[ny][nx]*/[3] = 0;
     	    d_spx_data[spx_index].accum/*[ny][nx]*/[4] = 0;
             d_spx_data[spx_index].accum/*[ny][nx]*/[5] = 0;

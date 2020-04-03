@@ -82,6 +82,7 @@ struct spx_data
     unsigned char l;
     unsigned char a;
     unsigned char b;
+    unsigned char pad;
     // TODO: Consider padding
 
     // Accumulators for superpixel averaging
@@ -114,7 +115,7 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
 
 __global__ void k_averaging(spx_data* d_spx_data);
 
-#define k_ownership k_ownershipOrig
+#define k_ownership k_ownershipOpt2
 __global__ void k_ownershipOrig(const pix_data* d_pix_data, own_data* d_own_data, const spx_data* d_spx_data);
 __global__ void k_ownershipOpt(const pix_data* d_pix_data, own_data* d_own_data, const spx_data* d_spx_data);
 __global__ void k_ownershipOpt2(const pix_data* d_pix_data, own_data* d_own_data, const spx_data* d_spx_data);
