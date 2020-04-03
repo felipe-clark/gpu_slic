@@ -364,7 +364,7 @@ __global__ void k_ownershipOpt2(const pix_data* d_pix_data, own_data* d_own_data
     int min_i = 0;
     int min_j = 0;
 
-    __shared__ int spx[3][3][5]; // Y, X, LABXY
+    __shared__ int spx[4][3][5]; // Y, X, LABXY - [4] in first dimension to minimize shared memory bank conflicts
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -394,29 +394,39 @@ __global__ void k_ownershipOpt2(const pix_data* d_pix_data, own_data* d_own_data
         tid /= 3;
         int ny = tid % 3;
         tid /= 3;
-        if (tid < 5)
+        
+        if (tid == 0)
         {
-            int value;
+            int vl=-1;
+            int va=-1;
+            int vb=-1;
+            int vx=-1;
+            int vy=-1;
 	        int i = i_center + nx - 1;
 	        int j = j_center + ny - 1;
             
-            if (i<0 || i>=spx_width || j<0 || j>=spx_height)
-            {
-                value = -1;
-            }
-	        else
+            if (i>=0 && i<spx_width && j>=0 && j<spx_height)
+            // {
+            //     //value = -1;
+            //     vl=-1;
+            //     va=-1;
+            //     vb=-1;
+            //     vx=-1;
+            //     vy=-1;
+            // }
+	        // else
             {
 	            int spx_index = j * spx_width + i;
-                // const spx_data& spix = d_spx_data[spx_index]; //TODO: This is compromising efficiency by 25%!
+                const spx_data& spix = d_spx_data[spx_index]; //TODO: This is compromising efficiency by 25%! But still the best result
 
-                spx_data spix2;
-                memcpy(&spix2, &d_spx_data[spx_index], sizeof(spx_data));
+                // spx_data spix2;
+                // memcpy(&spix2, &d_spx_data[spx_index], sizeof(spx_data));
 
                 // int* spx_data_lab = (int*)(&d_spx_data[spx_index].l);
                 // int64_t* spx_data_xy = (int64_t*)(&d_spx_data[spx_index].x);
                 
-	            switch(tid) //TODO:Get rid of it by using better data struct.?
-	            {
+	            //switch(tid) //TODO:Get rid of it by using better data struct.?
+	            //{
                     // case 0: value = (*spx_data_lab >> 24  & 0xFF);      break;
                     // case 1: value = (*spx_data_lab >> 16  & 0xFF);      break;
                     // case 2: value = (*spx_data_lab >> 8  & 0xFF);       break;
@@ -428,15 +438,26 @@ __global__ void k_ownershipOpt2(const pix_data* d_pix_data, own_data* d_own_data
                     // case 2: value=spix.b; break;
     		        // case 3: value=spix.x; break;
                     // case 4: value=spix.y; break;
+
+                    vl=spix.l;
+		            va=spix.a;
+                    vb=spix.b;
+    		        vx=spix.x;
+                    vy=spix.y;
                     
-                    case 0: value=spix2.l; break;
-		            case 1: value=spix2.a; break;
-                    case 2: value=spix2.b; break;
-    		        case 3: value=spix2.x; break;
-		            case 4: value=spix2.y; break;
-                }
+                    // case 0: value=spix2.l; break;
+		            // case 1: value=spix2.a; break;
+                    // case 2: value=spix2.b; break;
+    		        // case 3: value=spix2.x; break;
+		            // case 4: value=spix2.y; break;
+                //}
             }
-            spx[ny][nx][tid] = value;
+            //spx[ny][nx][tid] = value;
+            spx[ny][nx][0] = vl;
+            spx[ny][nx][1] = va;
+            spx[ny][nx][2] = vb;
+            spx[ny][nx][3] = vx;
+            spx[ny][nx][4] = vy;
         }
         
         __syncthreads();
@@ -473,13 +494,13 @@ __global__ void k_ownershipOpt2(const pix_data* d_pix_data, own_data* d_own_data
         // Writing as a blob (made it worse)
         // This reaches 100% write efficiency,
         // but runs slower than the code below
-        // int mins = min_i << 0 | min_j <<  8;
-        // *(int*)(d_own_data  + pix_index) = mins;
+        int mins = min_i << 0 | min_j <<  8;
+        *(int*)(d_own_data  + pix_index) = mins;
 
         // Writing as data structure
         // Write efficiency is only 25%!
-        d_own_data[pix_index].i = min_i;
-        d_own_data[pix_index].j = min_j;
+        // d_own_data[pix_index].i = min_i;
+        // d_own_data[pix_index].j = min_j;
     }
 }
 
