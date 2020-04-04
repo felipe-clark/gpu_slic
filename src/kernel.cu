@@ -383,11 +383,6 @@ __global__ void k_ownershipOpt2(const pix_data* d_pix_data, own_data* d_own_data
         unsigned char a = px_data.a;
         unsigned char b = px_data.b;
 
-        //  Reading as data structure
-        // int l = d_pix_data[pix_index].l;
-        // int a = d_pix_data[pix_index].a;
-        // int b = d_pix_data[pix_index].b;
-
 	    // Initialize SMEM
         int tid = threadIdx.x + blockDim.x * threadIdx.y;
         int nx = tid % 3;
@@ -406,53 +401,17 @@ __global__ void k_ownershipOpt2(const pix_data* d_pix_data, own_data* d_own_data
 	        int j = j_center + ny - 1;
             
             if (i>=0 && i<spx_width && j>=0 && j<spx_height)
-            // {
-            //     //value = -1;
-            //     vl=-1;
-            //     va=-1;
-            //     vb=-1;
-            //     vx=-1;
-            //     vy=-1;
-            // }
-	        // else
             {
 	            int spx_index = j * spx_width + i;
                 const spx_data& spix = d_spx_data[spx_index]; //TODO: This is compromising efficiency by 25%! But still the best result
 
-                // spx_data spix2;
-                // memcpy(&spix2, &d_spx_data[spx_index], sizeof(spx_data));
-
-                // int* spx_data_lab = (int*)(&d_spx_data[spx_index].l);
-                // int64_t* spx_data_xy = (int64_t*)(&d_spx_data[spx_index].x);
-                
-	            //switch(tid) //TODO:Get rid of it by using better data struct.?
-	            //{
-                    // case 0: value = (*spx_data_lab >> 24  & 0xFF);      break;
-                    // case 1: value = (*spx_data_lab >> 16  & 0xFF);      break;
-                    // case 2: value = (*spx_data_lab >> 8  & 0xFF);       break;
-                    // case 3: value = (*spx_data_xy >> 32 & 0xFFFFFFFF);  break;
-                    // case 4: value = (*spx_data_xy & 0xFFFFFFFF);        break;
-
-                    // case 0: value=spix.l; break;
-		            // case 1: value=spix.a; break;
-                    // case 2: value=spix.b; break;
-    		        // case 3: value=spix.x; break;
-                    // case 4: value=spix.y; break;
-
-                    vl=spix.l;
-		            va=spix.a;
-                    vb=spix.b;
-    		        vx=spix.x;
-                    vy=spix.y;
-                    
-                    // case 0: value=spix2.l; break;
-		            // case 1: value=spix2.a; break;
-                    // case 2: value=spix2.b; break;
-    		        // case 3: value=spix2.x; break;
-		            // case 4: value=spix2.y; break;
-                //}
+                vl=spix.l;
+                va=spix.a;
+                vb=spix.b;
+                vx=spix.x;
+                vy=spix.y;
             }
-            //spx[ny][nx][tid] = value;
+
             spx[ny][nx][0] = vl;
             spx[ny][nx][1] = va;
             spx[ny][nx][2] = vb;
@@ -491,16 +450,109 @@ __global__ void k_ownershipOpt2(const pix_data* d_pix_data, own_data* d_own_data
             }
         }
 
-        // Writing as a blob (made it worse)
-        // This reaches 100% write efficiency,
-        // but runs slower than the code below
+        // Writing as a blob
+        // This reaches 100% write efficiency.
         int mins = min_i << 0 | min_j <<  8;
         *(int*)(d_own_data  + pix_index) = mins;
+    }
+}
 
-        // Writing as data structure
-        // Write efficiency is only 25%!
-        // d_own_data[pix_index].i = min_i;
-        // d_own_data[pix_index].j = min_j;
+__global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data, const spx_data* d_spx_data)
+{
+    float min_dist = 10E99;// max_float;
+    int min_i = 0;
+    int min_j = 0;
+
+    __shared__ int spx[3][3][5]; // Y, X, LABXY
+    __shared__ pix_data px[8*128];
+
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (y < pix_height && x < pix_width) 
+    {
+        int pix_index = y * pix_width + x;
+        int i_center = x/spx_size;
+        int j_center = y/spx_size;
+
+        int lab_data = *((int*)(d_pix_data + pix_index));
+        pix_data px_data = *((pix_data*)(&lab_data));   
+        px[threadIdx.y*128+threadIdx.x] = px_data;
+
+ 	    // Initialize SMEM
+        int tid = threadIdx.x + blockDim.x * threadIdx.y;
+        int nx = tid % 3;
+        tid /= 3;
+        int ny = tid % 3;
+        tid /= 3;
+        
+        if (tid == 0)
+        {
+            int vl=-1;
+            int va=-1;
+            int vb=-1;
+            int vx=-1;
+            int vy=-1;
+	        int i = i_center + nx - 1;
+	        int j = j_center + ny - 1;
+            
+            if (i>=0 && i<spx_width && j>=0 && j<spx_height)
+            {
+	            int spx_index = j * spx_width + i;
+                const spx_data& spix = d_spx_data[spx_index]; //TODO: This is compromising efficiency by 25%! But still the best result
+
+                vl=spix.l;
+                va=spix.a;
+                vb=spix.b;
+                vx=spix.x;
+                vy=spix.y;
+            }
+
+            spx[ny][nx][0] = vl;
+            spx[ny][nx][1] = va;
+            spx[ny][nx][2] = vb;
+            spx[ny][nx][3] = vx;
+            spx[ny][nx][4] = vy;
+        }
+        
+        __syncthreads();
+
+        for (int ny=0; ny<3; ++ny) 
+            for (int nx=0; nx<3; ++nx)
+            {
+                int* spix = spx[ny][nx];
+                if (spix[0]==-1) continue;
+
+                pix_data pix_data_o = px[threadIdx.y*128+threadIdx.x];
+
+                int l_dist = pix_data_o.l-spix[0];
+                l_dist *= l_dist;
+                int a_dist = pix_data_o.a-spix[1];
+                a_dist *= a_dist;
+                int b_dist = pix_data_o.b-spix[2];
+                b_dist *= b_dist;
+                int dlab = l_dist + a_dist + b_dist;
+
+                int x_dist = x-spix[3];
+                x_dist *= x_dist;
+                int y_dist = y-spix[4];
+                y_dist *= y_dist;
+                int dxy = x_dist + y_dist;
+
+                float D = dlab + slic_factor * dxy;
+
+                if (D < min_dist)
+                {
+                        min_dist = D;
+                        min_i = i_center + nx - 1;
+                        min_j = j_center + ny - 1;
+                }
+            }   
+
+        // Writing as a blob
+        // This reaches 100% write efficiency.
+        int mins = min_i << 0 | min_j <<  8;
+        *(int*)(d_own_data  + pix_index) = mins;
     }
 }
 

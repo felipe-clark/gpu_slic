@@ -115,10 +115,11 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
 
 __global__ void k_averaging(spx_data* d_spx_data);
 
-#define k_ownership k_ownershipOpt2
+#define k_ownership k_ownershipOpt3
 __global__ void k_ownershipOrig(const pix_data* d_pix_data, own_data* d_own_data, const spx_data* d_spx_data);
 __global__ void k_ownershipOpt(const pix_data* d_pix_data, own_data* d_own_data, const spx_data* d_spx_data);
 __global__ void k_ownershipOpt2(const pix_data* d_pix_data, own_data* d_own_data, const spx_data* d_spx_data);
+__global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data, const spx_data* d_spx_data);
 
 __global__ void k_reset(spx_data* d_spx_data);
 // Test Kernels
