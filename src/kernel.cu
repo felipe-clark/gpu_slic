@@ -476,10 +476,10 @@ __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data
 
         for (int i=0; i<8; i++)
         {
-            int pix_index = (y*8+i) * pix_width + x;
+            int pix_index = ((y*8+i) * pix_width) + x;
             int lab_data = *((int*)(d_pix_data + pix_index));
             pix_data px_data = *((pix_data*)(&lab_data));   
-            px[(threadIdx.y*8+i)*128+threadIdx.x] = px_data;
+            px[((threadIdx.y*8+i)*128)+threadIdx.x] = px_data;
         }
 
  	    // Initialize SMEM
@@ -502,7 +502,7 @@ __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data
             if (i>=0 && i<spx_width && j>=0 && j<spx_height)
             {
 	            int spx_index = j * spx_width + i;
-                const spx_data& spix = d_spx_data[spx_index]; //TODO: This is compromising efficiency by 25%! But still the best result
+                const spx_data& spix = d_spx_data[spx_index];
 
                 vl=spix.l;
                 va=spix.a;
@@ -522,7 +522,7 @@ __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data
 
         for (int i=0; i<8; i++)
         {
-            int pix_index = (y*7+i) * pix_width + x;
+            int pix_index = ((y*8+i) * pix_width) + x;
         
             for (int ny=0; ny<3; ++ny) 
                 for (int nx=0; nx<3; ++nx)
@@ -530,7 +530,7 @@ __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data
                     int* spix = spx[ny][nx];
                     if (spix[0]==-1) continue;
 
-                    pix_data pix_data_o = px[(threadIdx.y*8+i)*128+threadIdx.x];
+                    pix_data pix_data_o = px[((threadIdx.y*8+i)*128)+threadIdx.x];
 
                     int l_dist = pix_data_o.l-spix[0];
                     l_dist *= l_dist;
