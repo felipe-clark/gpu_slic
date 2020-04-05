@@ -93,7 +93,7 @@ int main(int argc, char** argv)
     //dim3 pix_threadsPerBlockOwn( 32, 32 ) ; // Original
     dim3 pix_threadsPerBlockOwn( 128, 8 ) ; // Optimized
     int pix_blockPerGridXOwn = 32;//(pix_width + pix_threadsPerBlockOwn.x-1)/pix_threadsPerBlockOwn.x;
-    int pix_blockPerGridYOwn = 256;//(pix_height + pix_threadsPerBlockOwn.y-1)/pix_threadsPerBlockOwn.y;
+    int pix_blockPerGridYOwn = 32;//(pix_height + pix_threadsPerBlockOwn.y-1)/pix_threadsPerBlockOwn.y;
     dim3 pix_blocksPerGridOwn(pix_blockPerGridXOwn, pix_blockPerGridYOwn, 1);
 
     // Optimized cumulativeSum kernel
