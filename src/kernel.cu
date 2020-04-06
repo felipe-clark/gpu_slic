@@ -460,28 +460,12 @@ __global__ void k_ownershipOpt2(const pix_data* d_pix_data, own_data* d_own_data
 __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data, const spx_data* d_spx_data)
 {
     __shared__ int spx[3][3][5]; // Y, X, LABXY
-    __shared__ pix_data px[64*128];
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
 
     int i_center = x/spx_size;
     int j_center = y/spx_size;
-
-    // Copy pixels to SMEM
-    for (int i=0; i<8; i++)
-    {
-        //if(blockIdx.x==0 && blockIdx.y==1 && threadIdx.y==0)
-            //printf("#%i,%i,%i,%i,%i,%i,%i,%i\n", ((y*8+i) * pix_width) + x, blockIdx.x, blockIdx.y, threadIdx.x, threadIdx.y,y,i,x);
-
-        int pix_index = ((y*8+i) * pix_width) + x;
-        int lab_data = *((int*)(d_pix_data + pix_index));
-        pix_data px_data = *((pix_data*)(&lab_data));
-        px[((threadIdx.y*8+i)*spx_size)+threadIdx.x] = px_data;
-
-        // if(blockIdx.x==0 && blockIdx.y==0)
-        //     printf(" %i,%i,%i,%i,%i\n", ((threadIdx.y*8+i)*spx_size)+threadIdx.x, threadIdx.y, i, spx_size, threadIdx.x);
-    }
 
     // Copy super-pixels  to SMEM
     int tid = threadIdx.x + blockDim.x * threadIdx.y;
@@ -521,13 +505,23 @@ __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data
     
     __syncthreads();
 
-    // Compute ownership
-    for (int i=0; i<8; i++)
+
+    #define pix_per_thread 1
+    pix_data px[pix_per_thread];
+    // Copy pixels to SMEM
+    for (int i=0; i<pix_per_thread; i++)
     {
-        int min_dist = 10E99;
+        int pix_index = ((y*pix_per_thread+i) * pix_width) + x;
+        int lab_data = *((int*)(d_pix_data + pix_index));
+        pix_data px_data = *((pix_data*)(&lab_data));
+        px[i] = px_data;
+
+        // Compute ownership
+    
+        float min_dist = 10E99;
         int min_i = 0;
         int min_j = 0;
-        pix_data pix_data_o = px[((threadIdx.y*8+i)*spx_size)+threadIdx.x];
+        pix_data pix_data_o = px[i];
     
         for (int ny=0; ny<3; ++ny)
         { 
@@ -546,7 +540,7 @@ __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data
 
                 int x_dist = x-spix[3];
                 x_dist *= x_dist;
-                int y_dist = y*8+i-spix[4];
+                int y_dist = y*pix_per_thread+i-spix[4];
                 y_dist *= y_dist;
                 int dxy = x_dist + y_dist;
 
@@ -560,9 +554,6 @@ __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data
                 }
             } 
         }
-
-        // int pix_index = ((y*8+i) * pix_width) + x;
-        int pix_index = ((y*8+i) * pix_width) + x;
         
         // Writing as a blob
         // This reaches 100% write efficiency.
