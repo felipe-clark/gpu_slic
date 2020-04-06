@@ -508,7 +508,6 @@ __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data
 
     #define pix_per_thread 16
     pix_data px[pix_per_thread];
-    // Copy pixels to SMEM
     for (int i=0; i<pix_per_thread; i++)
     {
         int pix_index = ((y*pix_per_thread+i) * pix_width) + x;
@@ -521,7 +520,6 @@ __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data
         float min_dist = 10E99;
         int min_i = 0;
         int min_j = 0;
-        pix_data pix_data_o = px[i];
     
         for (int ny=0; ny<3; ++ny)
         { 
@@ -530,11 +528,11 @@ __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data
                 int* spix = spx[ny][nx];
                 if (spix[0]==-1) continue;
 
-                int l_dist = pix_data_o.l-spix[0];
+                int l_dist = px[i].l-spix[0];
                 l_dist *= l_dist;
-                int a_dist = pix_data_o.a-spix[1];
+                int a_dist = px[i].a-spix[1];
                 a_dist *= a_dist;
-                int b_dist = pix_data_o.b-spix[2];
+                int b_dist = px[i].b-spix[2];
                 b_dist *= b_dist;
                 int dlab = l_dist + a_dist + b_dist;
 
