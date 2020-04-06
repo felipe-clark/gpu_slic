@@ -134,5 +134,6 @@ void test_color_spx(pix_data* h_pix_data, const own_data* h_own_data, const spx_
 
 // Other
 double getTimestamp();
+void reportError(cudaError_t, const  char* file, int line);
 
 #endif

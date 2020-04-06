@@ -48,9 +48,15 @@ int main(int argc, char** argv)
     int own_byte_size = pix_width * pix_height * sizeof(own_data);
     int spx_byte_size = spx_width * spx_height * sizeof(spx_data);
 
-    cudaMalloc(&d_pix_data, pix_byte_size);
-    cudaMalloc(&d_own_data, own_byte_size);
-    cudaMalloc(&d_spx_data, spx_byte_size);
+    // Error code to check return values for CUDA calls
+    cudaError_t err = cudaSuccess;
+
+    err = cudaMalloc(&d_pix_data, pix_byte_size);
+    reportError(err, __FILE__, __LINE__);
+    err = cudaMalloc(&d_own_data, own_byte_size);
+    reportError(err, __FILE__, __LINE__);
+    err = cudaMalloc(&d_spx_data, spx_byte_size);
+    reportError(err, __FILE__, __LINE__);
 
     pix_data* h_pix_data = (pix_data*)malloc(pix_byte_size);
     for (int x=0; x<pix_width; x++) for (int y=0; y<pix_height; y++)
@@ -60,18 +66,21 @@ int main(int argc, char** argv)
 	h_pix_data[pix_idx].a = ((pix_original_data*)m_lab_image.data)[pix_idx].a;
 	h_pix_data[pix_idx].b = ((pix_original_data*)m_lab_image.data)[pix_idx].b;
     }
-    cudaMemcpy(d_pix_data, h_pix_data, pix_byte_size, cudaMemcpyHostToDevice);
+    err = cudaMemcpy(d_pix_data, h_pix_data, pix_byte_size, cudaMemcpyHostToDevice);
+    reportError(err, __FILE__, __LINE__);
 
     own_data* h_own_data = (own_data*)malloc(own_byte_size);
     initialize_own(h_own_data);
-    cudaMemcpy(d_own_data, h_own_data, own_byte_size, cudaMemcpyHostToDevice);
+    err = cudaMemcpy(d_own_data, h_own_data, own_byte_size, cudaMemcpyHostToDevice);
+    reportError(err, __FILE__, __LINE__);
 
     own_data* h_n_own_data = (own_data*)malloc(own_byte_size);
     initialize_n_own(h_n_own_data);
 
     spx_data* h_spx_data = (spx_data*)malloc(spx_byte_size);
     initialize_spx(h_spx_data);
-    cudaMemcpy(d_spx_data, h_spx_data, spx_byte_size, cudaMemcpyHostToDevice);
+    err = cudaMemcpy(d_spx_data, h_spx_data, spx_byte_size, cudaMemcpyHostToDevice);
+    reportError(err, __FILE__, __LINE__);
 
     initializeSlicFactor();
 
@@ -127,30 +136,44 @@ int main(int argc, char** argv)
     for (int i = 0 ; i<iterations; i++)
     {
         k_reset<<<spx_blocksPerGrid, spx_threadsPerBlock>>>(d_spx_data);
-        k_ownership<<<pix_blocksPerGridOwn, pix_threadsPerBlockOwn>>>(d_pix_data, d_own_data, d_spx_data);
-        
-	k_cumulativeCount<<<pix_blocksPerGridOpt, pix_threadsPerBlockOpt>>>(d_pix_data, d_own_data, d_spx_data
-        #ifdef BANKDEBUG
-	, false
-	#endif
-	);
+        err = cudaGetLastError();
+        reportError(err, __FILE__, __LINE__);
 
-	//printf("REMOVE THIS BEFORE MEASURING\n"); cudaDeviceSynchronize(); //TODO
+        k_ownership<<<pix_blocksPerGridOwn, pix_threadsPerBlockOwn>>>(d_pix_data, d_own_data, d_spx_data);
+        err = cudaGetLastError();
+        reportError(err, __FILE__, __LINE__);
+
+	    k_cumulativeCount<<<pix_blocksPerGridOpt, pix_threadsPerBlockOpt>>>(d_pix_data, d_own_data, d_spx_data
+        #ifdef BANKDEBUG
+	    , false
+        #endif
+        );
+        err = cudaGetLastError();
+        reportError(err, __FILE__, __LINE__);
+        
+        //printf("REMOVE THIS BEFORE MEASURING\n"); cudaDeviceSynchronize(); //TODO
         k_averaging<<<spx_blocksPerGrid, spx_threadsPerBlock>>>(d_spx_data);
+        err = cudaGetLastError();
+        reportError(err, __FILE__, __LINE__);
     }
+
     cudaDeviceSynchronize();
     double ts_end = getTimestamp();
     printf("Average time %0.9f, total %0.9f iters %d\n", (ts_end - ts_start)/iterations, (ts_end - ts_start), iterations);
 
-    cudaMemcpy(h_pix_data, d_pix_data, pix_byte_size, cudaMemcpyDeviceToHost);
-    cudaMemcpy(h_own_data, d_own_data, own_byte_size, cudaMemcpyDeviceToHost);
-    cudaMemcpy(h_spx_data, d_spx_data, spx_byte_size, cudaMemcpyDeviceToHost);
+    err = cudaMemcpy(h_pix_data, d_pix_data, pix_byte_size, cudaMemcpyDeviceToHost);
+    reportError(err, __FILE__, __LINE__);
+    err = cudaMemcpy(h_own_data, d_own_data, own_byte_size, cudaMemcpyDeviceToHost);
+    reportError(err, __FILE__, __LINE__);
+    err = cudaMemcpy(h_spx_data, d_spx_data, spx_byte_size, cudaMemcpyDeviceToHost);
+    reportError(err, __FILE__, __LINE__);
 
     const bool doConnectivity = true;
     if (doConnectivity)
     {
         enforce_label_connectivity(h_own_data, pix_width, pix_height, h_n_own_data, spx_width * spx_height);
-        cudaMemcpy(d_own_data, h_n_own_data, own_byte_size, cudaMemcpyHostToDevice);
+        err = cudaMemcpy(d_own_data, h_n_own_data, own_byte_size, cudaMemcpyHostToDevice);
+        reportError(err, __FILE__, __LINE__);
     }
     else
     {
@@ -158,14 +181,25 @@ int main(int argc, char** argv)
     }
 
     k_reset<<<spx_blocksPerGrid, spx_threadsPerBlock>>>(d_spx_data);
+    err = cudaGetLastError();
+    reportError(err, __FILE__, __LINE__);
+
     // Has to be original cumulativeCount, because we can't assume window size of 1 after conn. enforcement
     k_cumulativeCountOrig<<<pix_blocksPerGrid, pix_threadsPerBlock>>>(d_pix_data, d_own_data, d_spx_data);
-    printf("3\n"); cudaDeviceSynchronize(); //TODO
+    err = cudaGetLastError();
+    reportError(err, __FILE__, __LINE__);
+
+    printf("3\n");
+    cudaDeviceSynchronize();
+    //TODO
     k_averaging<<<spx_blocksPerGrid, spx_threadsPerBlock>>>(d_spx_data);
 
-    cudaMemcpy(h_pix_data, d_pix_data, pix_byte_size, cudaMemcpyDeviceToHost);
-    cudaMemcpy(h_own_data, d_own_data, own_byte_size, cudaMemcpyDeviceToHost);
-    cudaMemcpy(h_spx_data, d_spx_data, spx_byte_size, cudaMemcpyDeviceToHost);
+    err = cudaMemcpy(h_pix_data, d_pix_data, pix_byte_size, cudaMemcpyDeviceToHost);
+    reportError(err, __FILE__, __LINE__);
+    err = cudaMemcpy(h_own_data, d_own_data, own_byte_size, cudaMemcpyDeviceToHost);
+    reportError(err, __FILE__, __LINE__);
+    err = cudaMemcpy(h_spx_data, d_spx_data, spx_byte_size, cudaMemcpyDeviceToHost);
+    reportError(err, __FILE__, __LINE__);
 
     color_solid(h_pix_data, h_own_data, h_spx_data);
     //color_borders(h_pix_data, h_own_data, h_spx_data);
@@ -304,4 +338,13 @@ double getTimestamp()
     struct timeval tv;
     gettimeofday(&tv, NULL);
     return (double) tv.tv_usec/1000000.0 + tv.tv_sec;
+}
+
+void reportError(cudaError_t err, const char* file, int line)
+{
+    if (err != cudaSuccess)
+        {
+            printf("%s failed at %i\n", file, line);
+            exit(-1);
+        }
 }
