@@ -506,7 +506,7 @@ __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data
     __syncthreads();
 
 
-    #define pix_per_thread 1
+    #define pix_per_thread 16
     pix_data px[pix_per_thread];
     // Copy pixels to SMEM
     for (int i=0; i<pix_per_thread; i++)
