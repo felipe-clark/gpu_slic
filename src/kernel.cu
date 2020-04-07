@@ -465,7 +465,7 @@ __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data
     int y = blockIdx.y * blockDim.y + threadIdx.y;
 
     int i_center = x/spx_size;
-    int j_center = y/spx_size;
+    int j_center = y*16/spx_size;
 
     // Copy super-pixels  to SMEM
     int tid = threadIdx.x + blockDim.x * threadIdx.y;
@@ -507,13 +507,11 @@ __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data
 
 
     #define pix_per_thread 16
-    pix_data px[pix_per_thread];
     for (int i=0; i<pix_per_thread; i++)
     {
         int pix_index = ((y*pix_per_thread+i) * pix_width) + x;
         int lab_data = *((int*)(d_pix_data + pix_index));
-        pix_data px_data = *((pix_data*)(&lab_data));
-        px[i] = px_data;
+        pix_data px = *((pix_data*)(&lab_data));
 
         // Compute ownership
     
@@ -528,11 +526,11 @@ __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data
                 int* spix = spx[ny][nx];
                 if (spix[0]==-1) continue;
 
-                int l_dist = px[i].l-spix[0];
+                int l_dist = px.l-spix[0];
                 l_dist *= l_dist;
-                int a_dist = px[i].a-spix[1];
+                int a_dist = px.a-spix[1];
                 a_dist *= a_dist;
-                int b_dist = px[i].b-spix[2];
+                int b_dist = px.b-spix[2];
                 b_dist *= b_dist;
                 int dlab = l_dist + a_dist + b_dist;
 
