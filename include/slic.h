@@ -77,8 +77,8 @@ struct own_data
 // taken from all its "owned" pixels.
 struct spx_data
 {
-    int x;
-    int y;
+    short x;
+    short y;
     unsigned char l;
     unsigned char a;
     unsigned char b;

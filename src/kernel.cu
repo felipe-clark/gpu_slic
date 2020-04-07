@@ -488,12 +488,22 @@ __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data
         {
             int spx_index = j * spx_width + i;
             const spx_data& spix = d_spx_data[spx_index];
-
+            
             vl=spix.l;
             va=spix.a;
             vb=spix.b;
             vx=spix.x;
             vy=spix.y;
+
+            // The following works, but  made the performance worse
+            //int64_t _labxy  =  *((int64_t*)(d_spx_data + spx_index));
+            //spx_data labxy = *((spx_data*)(&_labxy));
+
+            // vl=labxy.l;
+            // va=labxy.a;
+            // vb=labxy.b;
+            // vx=labxy.x;
+            // vy=labxy.y;
         }
 
         spx[ny][nx][0] = vl;
@@ -507,14 +517,17 @@ __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data
 
 
     #define pix_per_thread 16
+    // Trying to  change multiplications by pix_per_thread for
+    // left bitshift 4 made the performance worse. I guess because
+    // this code will require the float point unit anyway, our good
+    // intentions don't matter.
     for (int i=0; i<pix_per_thread; i++)
     {
-        int pix_index = ((y*pix_per_thread+i) * pix_width) + x;
+        volatile int pix_index = (((y*pix_per_thread+i) * pix_width) + x);
         int lab_data = *((int*)(d_pix_data + pix_index));
         pix_data px = *((pix_data*)(&lab_data));
 
         // Compute ownership
-    
         float min_dist = 10E99;
         int min_i = 0;
         int min_j = 0;
@@ -524,34 +537,20 @@ __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data
             int* spix = spx[n/3][n%3];
             if (spix[0]==-1) continue;
 
-            int l_dist = px.l-spix[0];
-            l_dist *= l_dist;
-            int a_dist = px.a-spix[1];
-            a_dist *= a_dist;
-            int b_dist = px.b-spix[2];
-            b_dist *= b_dist;
-            int dlab = l_dist + a_dist + b_dist;
-
-            volatile int x_dist = x-spix[3];
-            x_dist *= x_dist;
-            int y_dist = y*pix_per_thread+i-spix[4];
-            y_dist *= y_dist;
-            int dxy = x_dist + y_dist;
-
-            float D = dlab + slic_factor * dxy;
+            float D = ((px.l-spix[0])*(px.l-spix[0]) + (px.a-spix[1])*(px.a-spix[1]) + (px.b-spix[2])*(px.b-spix[2])) +
+            slic_factor * ((x-spix[3])*(x-spix[3]) + (y*pix_per_thread+i-spix[4])*(y*pix_per_thread+i-spix[4]));
 
             if (D < min_dist)
             {
                 min_dist = D;
-                min_i = i_center + n%3 - 1;
                 min_j = j_center + n/3 - 1;
+                min_i = i_center + n%3 - 1;
             }
         }
         
         // Writing as a blob
         // This reaches 100% write efficiency.
-        int mins = min_i << 0 | min_j <<  8;
-        *(int*)(d_own_data + pix_index) = mins;         
+        *(int*)(d_own_data + pix_index) = min_i << 0 | min_j << 8;         
     }
 }
 

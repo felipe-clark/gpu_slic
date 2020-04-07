@@ -347,6 +347,7 @@ void reportError(cudaError_t err, const char* file, int line)
     if (err != cudaSuccess)
         {
             printf("%s failed at %i\n", file, line);
+            printf("%s\n", cudaGetErrorString(err));
             exit(-1);
         }
 }
