@@ -519,36 +519,33 @@ __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data
         int min_i = 0;
         int min_j = 0;
     
-        for (int ny=0; ny<3; ++ny)
+        for (int n=0; n<9; ++n)
         { 
-            for (int nx=0; nx<3; ++nx)
+            int* spix = spx[n/3][n%3];
+            if (spix[0]==-1) continue;
+
+            int l_dist = px.l-spix[0];
+            l_dist *= l_dist;
+            int a_dist = px.a-spix[1];
+            a_dist *= a_dist;
+            int b_dist = px.b-spix[2];
+            b_dist *= b_dist;
+            int dlab = l_dist + a_dist + b_dist;
+
+            volatile int x_dist = x-spix[3];
+            x_dist *= x_dist;
+            int y_dist = y*pix_per_thread+i-spix[4];
+            y_dist *= y_dist;
+            int dxy = x_dist + y_dist;
+
+            float D = dlab + slic_factor * dxy;
+
+            if (D < min_dist)
             {
-                int* spix = spx[ny][nx];
-                if (spix[0]==-1) continue;
-
-                int l_dist = px.l-spix[0];
-                l_dist *= l_dist;
-                int a_dist = px.a-spix[1];
-                a_dist *= a_dist;
-                int b_dist = px.b-spix[2];
-                b_dist *= b_dist;
-                int dlab = l_dist + a_dist + b_dist;
-
-                int x_dist = x-spix[3];
-                x_dist *= x_dist;
-                int y_dist = y*pix_per_thread+i-spix[4];
-                y_dist *= y_dist;
-                int dxy = x_dist + y_dist;
-
-                float D = dlab + slic_factor * dxy;
-
-                if (D < min_dist)
-                {
-                    min_dist = D;
-                    min_i = i_center + nx - 1;
-                    min_j = j_center + ny - 1;
-                }
-            } 
+                min_dist = D;
+                min_i = i_center + n%3 - 1;
+                min_j = j_center + n/3 - 1;
+            }
         }
         
         // Writing as a blob
