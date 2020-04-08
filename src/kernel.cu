@@ -459,7 +459,7 @@ __global__ void k_ownershipOpt2(const pix_data* d_pix_data, own_data* d_own_data
 
 __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data, const spx_data* d_spx_data)
 {
-    __shared__ int spx[3][3][5]; // Y, X, LABXY
+    __shared__ int spx[3][3][2]; // Y, X, LABXY
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -476,24 +476,28 @@ __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data
     
     if (tid == 0)
     {
-        int vl=-1;
-        int va=-1;
-        int vb=-1;
-        int vx=-1;
-        int vy=-1;
+	int inta = (int)(0xFFFFFFFF);
+	int intb = (int)(0xFFFFFFFF);
+        //int vl=-1;
+        //int va=-1;
+        //int vb=-1;
+        //int vx=-1;
+        //int vy=-1;
         int i = i_center + nx - 1;
         int j = j_center + ny - 1;
         
         if (i>=0 && i<spx_width && j>=0 && j<spx_height)
         {
             int spx_index = j * spx_width + i;
-            const spx_data& spix = d_spx_data[spx_index];
+	    inta = *((int*)(d_spx_data + spx_index));
+	    intb = *((int*)(d_spx_data + spx_index) + 1);
+            //const spx_data& spix = d_spx_data[spx_index];
             
-            vl=spix.l;
-            va=spix.a;
-            vb=spix.b;
-            vx=spix.x;
-            vy=spix.y;
+            //vl=spix.l;
+            //va=spix.a;
+            //vb=spix.b;
+            //vx=spix.x;
+            //vy=spix.y;
 
             // The following works, but  made the performance worse
             //int64_t _labxy  =  *((int64_t*)(d_spx_data + spx_index));
@@ -506,11 +510,11 @@ __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data
             // vy=labxy.y;
         }
 
-        spx[ny][nx][0] = vl;
-        spx[ny][nx][1] = va;
-        spx[ny][nx][2] = vb;
-        spx[ny][nx][3] = vx;
-        spx[ny][nx][4] = vy;
+        spx[ny][nx][0] = inta; //vl;
+        spx[ny][nx][1] = intb; //va;
+        //spx[ny][nx][2] = vb;
+        //spx[ny][nx][3] = vx;
+        //spx[ny][nx][4] = vy;
     }
     
     __syncthreads();
@@ -534,10 +538,12 @@ __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data
         for (int n=0; n<9; ++n)
         { 
             int* spix = spx[n/3][n%3];
-            if (spix[0]==-1) continue;
+	    spx_data data = *((spx_data*)spix);
+            if (data.l==-1) continue;
+	    
 
-            float D = ((px.l-spix[0])*(px.l-spix[0]) + (px.a-spix[1])*(px.a-spix[1]) + (px.b-spix[2])*(px.b-spix[2])) +
-            slic_factor * ((x-spix[3])*(x-spix[3]) + (y*pix_per_thread+i-spix[4])*(y*pix_per_thread+i-spix[4]));
+            float D = ((px.l-data.l)*(px.l-data.l) + (px.a-data.a)*(px.a-data.a) + (px.b-data.b)*(px.b-data.b)) +
+            slic_factor * ((x-data.x)*(x-data.x) + (y*pix_per_thread+i-data.y)*(y*pix_per_thread+i-data.y));
 
             if (D < min_dist)
             {
