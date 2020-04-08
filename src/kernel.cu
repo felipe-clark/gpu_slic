@@ -465,7 +465,7 @@ __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data
     int y = blockIdx.y * blockDim.y + threadIdx.y;
 
     int i_center = x/spx_size;
-    int j_center = y*16/spx_size;
+    int j_center = y*pix_per_thread/spx_size;
 
     // Copy super-pixels  to SMEM
     int tid = threadIdx.x + blockDim.x * threadIdx.y;
@@ -516,7 +516,6 @@ __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data
     __syncthreads();
 
 
-    #define pix_per_thread 16
     // Trying to  change multiplications by pix_per_thread for
     // left bitshift 4 made the performance worse. I guess because
     // this code will require the float point unit anyway, our good
@@ -543,7 +542,7 @@ __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data
             if (D < min_dist)
             {
                 min_dist = D;
-                min_j = y*16/spx_size + n/3 - 1;
+                min_j = y*pix_per_thread/spx_size + n/3 - 1;
                 min_i = x/spx_size + n%3 - 1;
             }
         }
