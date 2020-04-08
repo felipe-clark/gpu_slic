@@ -101,7 +101,7 @@ int main(int argc, char** argv)
     // Ownership kernel - TODO: Optimize
     //dim3 pix_threadsPerBlockOwn( 32, 32 ) ; // Original
     #define horiz 128
-    #define vert 2
+    #define vert 1
     dim3 pix_threadsPerBlockOwn( horiz, vert ) ; // Optimized
     int pix_blockPerGridXOwn = 4096 / horiz;//(pix_width + pix_threadsPerBlockOwn.x-1)/pix_threadsPerBlockOwn.x;   //32
     int pix_blockPerGridYOwn = 2048 / (vert * pix_per_thread);//(pix_height + pix_threadsPerBlockOwn.y-1)/pix_threadsPerBlockOwn.y;  //16
