@@ -523,7 +523,7 @@ __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data
     // intentions don't matter.
     for (int i=0; i<pix_per_thread; i++)
     {
-        volatile int pix_index = (((y*pix_per_thread+i) * pix_width) + x);
+        int pix_index = (((y*pix_per_thread+i) * pix_width) + x);
         int lab_data = *((int*)(d_pix_data + pix_index));
         pix_data px = *((pix_data*)(&lab_data));
 
@@ -543,8 +543,8 @@ __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data
             if (D < min_dist)
             {
                 min_dist = D;
-                min_j = j_center + n/3 - 1;
-                min_i = i_center + n%3 - 1;
+                min_j = y*16/spx_size + n/3 - 1;
+                min_i = x/spx_size + n%3 - 1;
             }
         }
         
