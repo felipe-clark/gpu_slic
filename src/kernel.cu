@@ -542,7 +542,7 @@ __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data
             if (data.l==-1) continue;
 	    
 
-            float D = ((px.l-data.l)*(px.l-data.l) + (px.a-data.a)*(px.a-data.a) + (px.b-data.b)*(px.b-data.b)) +
+            float D = (((float)px.l-data.l)*((float)px.l-data.l) + ((float)px.a-data.a)*((float)px.a-data.a) + ((float)px.b-data.b)*((float)px.b-data.b)) +
             slic_factor * ((x-data.x)*(x-data.x) + (y*pix_per_thread+i-data.y)*(y*pix_per_thread+i-data.y));
 
             if (D < min_dist)
