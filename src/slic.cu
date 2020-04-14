@@ -100,9 +100,11 @@ int main(int argc, char** argv)
 
     // Ownership kernel - TODO: Optimize
     //dim3 pix_threadsPerBlockOwn( 32, 32 ) ; // Original
-    dim3 pix_threadsPerBlockOwn( 128, 8 ) ; // Optimized
-    int pix_blockPerGridXOwn = 32;//(pix_width + pix_threadsPerBlockOwn.x-1)/pix_threadsPerBlockOwn.x;   //32
-    int pix_blockPerGridYOwn = 16;//(pix_height + pix_threadsPerBlockOwn.y-1)/pix_threadsPerBlockOwn.y;  //16
+    #define horiz 32
+    #define vert 1
+    dim3 pix_threadsPerBlockOwn( horiz, vert ) ; // Optimized
+    int pix_blockPerGridXOwn = 4096 / horiz;//(pix_width + pix_threadsPerBlockOwn.x-1)/pix_threadsPerBlockOwn.x;   //32
+    int pix_blockPerGridYOwn = 2048 / (vert * pix_per_thread);//(pix_height + pix_threadsPerBlockOwn.y-1)/pix_threadsPerBlockOwn.y;  //16
 
     printf("%i || %i\n",pix_blockPerGridXOwn, pix_blockPerGridYOwn);
     dim3 pix_blocksPerGridOwn(pix_blockPerGridXOwn, pix_blockPerGridYOwn, 1);
@@ -347,6 +349,7 @@ void reportError(cudaError_t err, const char* file, int line)
     if (err != cudaSuccess)
         {
             printf("%s failed at %i\n", file, line);
+            printf("%s\n", cudaGetErrorString(err));
             exit(-1);
         }
 }
