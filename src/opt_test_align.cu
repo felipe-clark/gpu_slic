@@ -10,6 +10,18 @@ void initializeSlicFactor()
     cudaError_t cudaStatus = cudaMemcpyToSymbol(slic_factor, slic_factor_hp, sizeof(float));
 }
 
+__global__ void k_measure(int* d_device_location, int target)
+{
+    int accum = threadIdx.x;
+    for (int i=1; i<100; i++) for (int j=1; j<1000; j++)
+    {
+        accum *= j;
+	accum = accum ^ (threadIdx.y << j / 100);
+	accum += target;
+    }
+    if (accum == target) *d_device_location = 0;
+}
+
 __global__ void k_cumulativeCountOrig(const pix_data* d_pix_data, const own_data* d_own_data, spx_data* d_spx_data)
 {
     //if (threadIdx.x == 0 && threadIdx.y == 0 && blockIdx.x == 0 && blockIdx.y == 0)
@@ -27,101 +39,114 @@ __global__ void k_cumulativeCountOrig(const pix_data* d_pix_data, const own_data
         int j = d_own_data[pix_index].j;
         int spx_index = j * spx_width + i;
 
-        atomicAdd(&(d_spx_data[spx_index].accum[0]), d_pix_data[pix_index].l);
-        atomicAdd(&(d_spx_data[spx_index].accum[1]), d_pix_data[pix_index].a);
-        atomicAdd(&(d_spx_data[spx_index].accum[2]), d_pix_data[pix_index].b);
-        atomicAdd(&(d_spx_data[spx_index].accum[3]), 1);
-        atomicAdd(&(d_spx_data[spx_index].accum[4]), x);
-        atomicAdd(&(d_spx_data[spx_index].accum[5]), y);
+        atomicAdd(&(d_spx_data[spx_index].accum[0][0][0]), d_pix_data[pix_index].l);
+        atomicAdd(&(d_spx_data[spx_index].accum[0][0][1]), d_pix_data[pix_index].a);
+        atomicAdd(&(d_spx_data[spx_index].accum[0][0][2]), d_pix_data[pix_index].b);
+        atomicAdd(&(d_spx_data[spx_index].accum[0][0][3]), 1);
+        atomicAdd(&(d_spx_data[spx_index].accum[0][0][4]), x);
+        atomicAdd(&(d_spx_data[spx_index].accum[0][0][5]), y);
     }
 }
 
+#define dimensions 128
+#define log2_dimensions 7
+#define sums 54
+#define log2_pix_at_a_time 7
+#define log2_pix_width 12
+#define const_pix_width 4096
+#define log2_spx_size 7
+#define log2_spx_width 5
 __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data* d_own_data, spx_data* d_spx_data)
 {
-    // If we do 16 instead of 8, only have enough memory for a short, not an int,
-    // and 16*32*255 does not fit in a short
-    __shared__ unsigned short acc[6][3][3][8][35]; //LAB+count, 3x3 neighbors, 8x32 values
-    const int memX = 3; // Extra added to X over 32 to avoid memory bank conflicts
-    const int memY = 0; // Extra added to Y over 8 for same reason
-    const int arraySize=6*3*3;
-    const int dimensions=(8 + memY)*(32 + memX);
+    //bool debug = (blockIdx.x == 20 /*&& threadIdx.x == 5*/ && blockIdx.y==3);
+    //if (debug) printf("K:%p\n",d_pix_data);
 
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = (blockIdx.y * blockDim.y + threadIdx.y) / OPT6;
-    int sx = threadIdx.x;
-    int sy = threadIdx.y / OPT6;
+    //typedef int itemsToSum[dimensions];
+    //__shared__ itemsToSum acc[6][3][3]; //LAB+count, 3x3 neighbors, 128 values
 
-    int cc = threadIdx.y % OPT6;
-    int ccs = 0; // 0 or cc ?
-    int ccstep = 1; // 1 or OPT6 value ?
-    if (cc == 0) {
-        for (int nx=0;nx<3;++nx) for (int ny=0;ny<3;++ny) for(int c=ccs;c<6;c+=ccstep) acc[c][ny][nx][sy][sx]=0;
+    int x = (blockIdx.x << log2_dimensions) + threadIdx.x;
+    int y = blockIdx.y << log2_pix_at_a_time;
+    //int sx = threadIdx.x;
+
+    // Initialize SMEM to 0
+    //int* accptr = (int*)acc;
+    //itemsToSum* sumptr = (itemsToSum*)acc;
+
+    //#pragma unroll
+    //for (int i=0; i<sums; ++i) sumptr[i][sx] = 0;
+
+    //accptr = (int*)acc;
+    
+    //int i_center = blockIdx.x; // OPT14:  * blockDim.x / spx_size;
+    //int j_center = blockIdx.y; // OPT14: y / spx_size;
+
+    int pix_index = (y << log2_pix_width) + x;
+    int accum = 0;
+    for (int yidx=0; yidx<pix_at_a_time; ++yidx) {
+	//int i = i_center; //d_own_data[pix_index].i;
+        //int j = j_center; //d_own_data[pix_index].j;
+        //int nx = (i<i_center) ? 0 : ((i>i_center) ? 2 : 1);
+        //int ny = (j<j_center) ? 0 : ((j>j_center) ? 2 : 1);
+
+	int pdata = *((int*)(d_pix_data + pix_index));
+        pix_data pd = *(reinterpret_cast<pix_data*>(&pdata));//d_pix_data[pix_index];
+	accum += pd.l;
+	accum = accum ^ pd.a;
+	accum += pd.b;
+	//if (debug && yidx==0) printf("%p\n",d_pix_data+pix_index);
+
+        //acc[0][ny][nx][sx] = (int)pd.l
+            //+ (yidx?(acc[0][ny][nx][sx]):0);
+        //acc[1][ny][nx][sx] = (int)pd.a
+            //+ (yidx?(acc[1][ny][nx][sx]):0);
+        //acc[2][ny][nx][sx] = (int)pd.b
+            //+ (yidx?(acc[2][ny][nx][sx]):0);
+        //acc[3][ny][nx][sx] = (int)1
+            //+ (yidx?(acc[3][ny][nx][sx]):0);
+        //acc[4][ny][nx][sx] = (int)x
+            //+ (yidx?(acc[4][ny][nx][sx]):0);
+        //acc[5][ny][nx][sx] = (int)(y+yidx)
+            //+ (yidx?(acc[5][ny][nx][sx]):0);
+	pix_index += const_pix_width;
     }
-    //__syncthreads(); // Sometimes needed for OPT6
-
-    int i_center = blockIdx.x * blockDim.x / spx_size;
-    //int j_center = (blockIdx.y * blockDim.y / 4) / spx_size; //OPT6
-    int j_center = y / spx_size;
-
-    if (cc==0) { //OPT6
-    int pix_index = y * pix_width + x;
-    int i = d_own_data[pix_index].i;
-    int j = d_own_data[pix_index].j;
-    int nx = (i<i_center) ? 0 : ((i>i_center) ? 2 : 1);
-    int ny = (j<j_center) ? 0 : ((j>j_center) ? 2 : 1);
-    acc[0][ny][nx][sy][sx] = d_pix_data[pix_index].l;
-    acc[1][ny][nx][sy][sx] = d_pix_data[pix_index].a;
-    acc[2][ny][nx][sy][sx] = d_pix_data[pix_index].b;
-    acc[3][ny][nx][sy][sx] = 1;
-    acc[4][ny][nx][sy][sx] = x - (i_center * spx_size);
-    acc[5][ny][nx][sy][sx] = y - (j_center * spx_size);
-    } //OPT6
-   
+    if (accum==56) printf("%d\n", accum);
+    return; 
+    /*
     __syncthreads();
 	
-    unsigned short* accptr = (unsigned short*)acc;
-
     // Collapse over X and Y
-    int tid = threadIdx.y * blockDim.x + threadIdx.x;
-    for (int step=32*8/2; step>0; step /= 2)
+    for (int log2_step=log2_dimensions-1; log2_step>=0; --log2_step)
     {
-        int locationIndex = tid % step;
-        int threadGroup = tid / step;
+	int step = 1 << log2_step;
+        int locationIndex = sx % step;
+        int threadGroup = sx >> log2_step;
 		
-        //int maxThreadGroup = dimensions / step;
-        //int maxThreadGroup = blockDim.x * blockDim.y / step;
-	int maxThreadGroup = 32 * 8 * OPT6 / step; //OPT6
-	
-        int maxLoopIndex = (arraySize + maxThreadGroup - 1) / maxThreadGroup;
+	int maxThreadGroup = 1 << (log2_dimensions - log2_step);	
+        int maxLoopIndex = (sums + maxThreadGroup - 1) / maxThreadGroup;
 
         // Divide arraySize (3*3*6=54) by max threadGroup + 1 and that's the loop
         // Actual a = loop index * (max threadGroup + 1) + innerIndex
-	
+
+        // It looks like a lot of unnecessary math (multiplications, etc) is going
+        // on below, but all attempts to optimize this lead to slowdowns. Looks like the
+        // compiler is doing something smart here.	
         for (int loopIndex=0; loopIndex<maxLoopIndex; loopIndex++)
         {
             int innerIndex = loopIndex * maxThreadGroup + threadGroup;
-            if (innerIndex >= arraySize) continue; 
+            if (innerIndex >= sums) continue; 
 
-	    //printf("i %d d %d l %d s %d t %d ts %d\n", innerIndex, dimensions, locationIndex, step,
-                //innerIndex*dimensions+locationIndex, innerIndex*dimensions+locationIndex+step);
-	    
-	    int loc2 = locationIndex + step;
-	    int loc = locationIndex + memX*(locationIndex/32);
-	    loc2 += memX*(loc2/32);
-            *(accptr + (innerIndex*dimensions + loc)) += 
-                *(accptr + (innerIndex*dimensions + loc2));
+            *(accptr + ((innerIndex<<log2_dimensions) + locationIndex)) += 
+                *(accptr + ((innerIndex<<log2_dimensions) + locationIndex + step));
         }
 		
         __syncthreads();
     }
 
-    if (tid >= arraySize) return;
-    
-    // Now, acc[c][ny][nx][0][0] has the values we need
-    int c = tid % 6;
-    tid /= 6;
-    int nx = tid % 3;
-    int ny = tid / 3;
+    if (sx >= sums) return;
+    int c = sx % 6;
+    sx /= 6;
+    int nx = sx % 3;
+    int ny = sx / 3;
 
     int j = j_center + ny - 1;
     if (j<0 || j>=spx_height) return;
@@ -129,10 +154,10 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     int i = i_center + nx - 1;
     if (i<0 || i>=spx_width) return;
 
-    int spx_index = j * spx_width + i;
-    atomicAdd(&(d_spx_data[spx_index].accum[c]), (int)acc[c][ny][nx][0][0] +
-        (c>3 ? (((c==4)?i_center:j_center)*spx_size*acc[3][ny][nx][0][0]) : 0));
-    //if (i_center==30 && j_center==15 && d_spx_data[spx_index].accum[3]>0) printf("ic:%d jc:%d x:%d y:%d, qty:%d\n",i_center,j_center,d_spx_data[spx_index].accum[4],d_spx_data[spx_index].accum[5], d_spx_data[spx_index].accum[3]);
+    int spx_index = (j << log2_spx_width) + i;
+
+    int* accum = (int*)(d_spx_data[spx_index].accum);
+    accum[sx*6 + c] = (int)acc[c][ny][nx][0];*/
 }
 
 
@@ -144,17 +169,28 @@ __global__ void k_averaging(spx_data* d_spx_data)
     if (i < spx_width && j < spx_height)
     {
         int spx_index = j * spx_width + i;
-        d_spx_data[spx_index].l = d_spx_data[spx_index].accum[0] / d_spx_data[spx_index].accum[3];
-        d_spx_data[spx_index].a = d_spx_data[spx_index].accum[1] / d_spx_data[spx_index].accum[3];
-        d_spx_data[spx_index].b = d_spx_data[spx_index].accum[2] / d_spx_data[spx_index].accum[3];
-        d_spx_data[spx_index].x = d_spx_data[spx_index].accum[4] / d_spx_data[spx_index].accum[3];
-        d_spx_data[spx_index].y = d_spx_data[spx_index].accum[5] / d_spx_data[spx_index].accum[3];
+	int num = 0, l = 0, a = 0, b = 0, x = 0, y = 0;
+	for (int ny=0; ny<3; ++ny) for (int nx=0; nx<3; ++nx) 
+	{
+            l   += d_spx_data[spx_index].accum[ny][nx][0];
+            a   += d_spx_data[spx_index].accum[ny][nx][1];
+            b   += d_spx_data[spx_index].accum[ny][nx][2];
+            num += d_spx_data[spx_index].accum[ny][nx][3];
+            x   += d_spx_data[spx_index].accum[ny][nx][4];
+            y   += d_spx_data[spx_index].accum[ny][nx][5];
+	}
+        d_spx_data[spx_index].l = l / num;
+        d_spx_data[spx_index].a = a / num;
+        d_spx_data[spx_index].b = b / num;
+        d_spx_data[spx_index].x = x / num;
+        d_spx_data[spx_index].y = y / num;
     }
 }
 
 __global__ void k_ownershipOpt(const pix_data* d_pix_data, own_data* d_own_data, const spx_data* d_spx_data)
 {
-    __shared__ spx_data spx[9 * 32];
+    return; // Does not work after opt14, used to be 9*32
+    __shared__ spx_data spx[1 * 1];
 
     float min_dist = 10E99;// max_float;
     int min_i = 0;
@@ -415,11 +451,13 @@ __global__ void k_reset(spx_data* d_spx_data)
     if (i < spx_width && j < spx_height)
     {
         int spx_index = j * spx_width + i;
-        d_spx_data[spx_index].accum[0] = 0;
-        d_spx_data[spx_index].accum[1] = 0;
-	d_spx_data[spx_index].accum[2] = 0;
-        d_spx_data[spx_index].accum[3] = 0;
-	d_spx_data[spx_index].accum[4] = 0;
-        d_spx_data[spx_index].accum[5] = 0;
+	for (int ny=0; ny<3; ++ny) for (int nx=0; nx<3; ++nx) {
+            d_spx_data[spx_index].accum[ny][nx][0] = 0;
+            d_spx_data[spx_index].accum[ny][nx][1] = 0;
+	    d_spx_data[spx_index].accum[ny][nx][2] = 0;
+            d_spx_data[spx_index].accum[ny][nx][3] = 0;
+    	    d_spx_data[spx_index].accum[ny][nx][4] = 0;
+            d_spx_data[spx_index].accum[ny][nx][5] = 0;
+	}
     }
 }

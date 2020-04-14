@@ -47,35 +47,45 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     const int dimensions=(8 + memY)*(32 + memX);
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = (blockIdx.y * blockDim.y + threadIdx.y) / OPT6;
+    int y = (blockIdx.y * blockDim.y + threadIdx.y) * pix_at_a_time / OPT6;
     int sx = threadIdx.x;
     int sy = threadIdx.y / OPT6;
 
-    int cc = threadIdx.y % OPT6;
-    int ccs = 0; // 0 or cc ?
-    int ccstep = 1; // 1 or OPT6 value ?
-    if (cc == 0) {
+    //int cc = 0; //threadIdx.y % OPT6;
+    const int ccs = 0; // 0 or cc ?
+    const int ccstep = 1; // 1 or OPT6 value ?
+    //if (cc == 0) {
         for (int nx=0;nx<3;++nx) for (int ny=0;ny<3;++ny) for(int c=ccs;c<6;c+=ccstep) acc[c][ny][nx][sy][sx]=0;
-    }
+    //}
     //__syncthreads(); // Sometimes needed for OPT6
 
     int i_center = blockIdx.x * blockDim.x / spx_size;
-    //int j_center = (blockIdx.y * blockDim.y / 4) / spx_size; //OPT6
+    //int j_center = (blockIdx.y * blockDim.y * pix_at_a_time) / spx_size; //OPT6
     int j_center = y / spx_size;
 
-    if (cc==0) { //OPT6
-    int pix_index = y * pix_width + x;
-    int i = d_own_data[pix_index].i;
-    int j = d_own_data[pix_index].j;
-    int nx = (i<i_center) ? 0 : ((i>i_center) ? 2 : 1);
-    int ny = (j<j_center) ? 0 : ((j>j_center) ? 2 : 1);
-    acc[0][ny][nx][sy][sx] = d_pix_data[pix_index].l;
-    acc[1][ny][nx][sy][sx] = d_pix_data[pix_index].a;
-    acc[2][ny][nx][sy][sx] = d_pix_data[pix_index].b;
-    acc[3][ny][nx][sy][sx] = 1;
-    acc[4][ny][nx][sy][sx] = x - (i_center * spx_size);
-    acc[5][ny][nx][sy][sx] = y - (j_center * spx_size);
-    } //OPT6
+    //if (cc==0) { //OPT6
+    int sum;
+    for (int yidx=0; yidx<pix_at_a_time; ++yidx) {
+	if ((y+yidx)>=pix_height) break;
+        int pix_index = (y + yidx) * pix_width + x;
+        int i = d_own_data[pix_index].i;
+        int j = d_own_data[pix_index].j;
+        int nx = (i<i_center) ? 0 : ((i>i_center) ? 2 : 1);
+        int ny = (j<j_center) ? 0 : ((j>j_center) ? 2 : 1);
+        acc[0][ny][nx][sy][sx] = (int)d_pix_data[pix_index].l / 2
+            + (yidx?(acc[0][ny][nx][sy][sx]):0);
+        acc[1][ny][nx][sy][sx] = (int)d_pix_data[pix_index].a / 2
+            + (yidx?(acc[1][ny][nx][sy][sx]):0);
+        acc[2][ny][nx][sy][sx] = (int)d_pix_data[pix_index].b / 2
+            + (yidx?(acc[2][ny][nx][sy][sx]):0);
+        sum = acc[3][ny][nx][sy][sx] = (int)1
+            + (yidx?(acc[3][ny][nx][sy][sx]):0);
+        acc[4][ny][nx][sy][sx] = ((int)x - (i_center * spx_size)) / 2
+            + (yidx?(acc[4][ny][nx][sy][sx]):0);
+        acc[5][ny][nx][sy][sx] = ((int)(y+yidx) - (j_center * spx_size)) / 2
+            + (yidx?(acc[5][ny][nx][sy][sx]):0);
+    }
+    //} //OPT6
    
     __syncthreads();
 	
@@ -144,11 +154,11 @@ __global__ void k_averaging(spx_data* d_spx_data)
     if (i < spx_width && j < spx_height)
     {
         int spx_index = j * spx_width + i;
-        d_spx_data[spx_index].l = d_spx_data[spx_index].accum[0] / d_spx_data[spx_index].accum[3];
-        d_spx_data[spx_index].a = d_spx_data[spx_index].accum[1] / d_spx_data[spx_index].accum[3];
-        d_spx_data[spx_index].b = d_spx_data[spx_index].accum[2] / d_spx_data[spx_index].accum[3];
-        d_spx_data[spx_index].x = d_spx_data[spx_index].accum[4] / d_spx_data[spx_index].accum[3];
-        d_spx_data[spx_index].y = d_spx_data[spx_index].accum[5] / d_spx_data[spx_index].accum[3];
+        d_spx_data[spx_index].l = 2*d_spx_data[spx_index].accum[0] / d_spx_data[spx_index].accum[3];
+        d_spx_data[spx_index].a = 2*d_spx_data[spx_index].accum[1] / d_spx_data[spx_index].accum[3];
+        d_spx_data[spx_index].b = 2*d_spx_data[spx_index].accum[2] / d_spx_data[spx_index].accum[3];
+        d_spx_data[spx_index].x = 2*d_spx_data[spx_index].accum[4] / d_spx_data[spx_index].accum[3];
+        d_spx_data[spx_index].y = 2*d_spx_data[spx_index].accum[5] / d_spx_data[spx_index].accum[3];
     }
 }
 

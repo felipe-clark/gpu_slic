@@ -10,6 +10,18 @@ void initializeSlicFactor()
     cudaError_t cudaStatus = cudaMemcpyToSymbol(slic_factor, slic_factor_hp, sizeof(float));
 }
 
+__global__ void k_measure(int* d_device_location, int target)
+{
+    int accum = threadIdx.x;
+    for (int i=1; i<100; i++) for (int j=1; j<1000; j++)
+    {
+        accum *= j;
+	accum = accum ^ (threadIdx.y << j / 100);
+	accum += target;
+    }
+    if (accum == target) *d_device_location = 0;
+}
+
 __global__ void k_cumulativeCountOrig(const pix_data* d_pix_data, const own_data* d_own_data, spx_data* d_spx_data)
 {
     //if (threadIdx.x == 0 && threadIdx.y == 0 && blockIdx.x == 0 && blockIdx.y == 0)
@@ -27,154 +39,170 @@ __global__ void k_cumulativeCountOrig(const pix_data* d_pix_data, const own_data
         int j = d_own_data[pix_index].j;
         int spx_index = j * spx_width + i;
 
-        atomicAdd(&(d_spx_data[spx_index].accum[0]), d_pix_data[pix_index].l);
-        atomicAdd(&(d_spx_data[spx_index].accum[1]), d_pix_data[pix_index].a);
-        atomicAdd(&(d_spx_data[spx_index].accum[2]), d_pix_data[pix_index].b);
-        atomicAdd(&(d_spx_data[spx_index].accum[3]), 1);
+        atomicAdd(&(d_spx_data[spx_index].accum/*[0][0]*/[0]), d_pix_data[pix_index].l);
+        atomicAdd(&(d_spx_data[spx_index].accum/*[0][0]*/[1]), d_pix_data[pix_index].a);
+        atomicAdd(&(d_spx_data[spx_index].accum/*[0][0]*/[2]), d_pix_data[pix_index].b);
+        atomicAdd(&(d_spx_data[spx_index].accum/*[0][0]*/[3]), 1);
+        atomicAdd(&(d_spx_data[spx_index].accum/*[0][0]*/[4]), x);
+        atomicAdd(&(d_spx_data[spx_index].accum/*[0][0]*/[5]), y);
     }
 }
 
-__global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data* d_own_data, spx_data* d_spx_data
-#ifdef BANKDEBUG
-, bool h_debug) {
-#else
-){ const bool h_debug = false;
-#endif
-    bool debug = false;
-    if (threadIdx.y == 0 && blockIdx.x == 0 && blockIdx.y == 0)
-    {
-	    debug = h_debug;
-	    //printf("K\n");
-    }
+#define dimensions_x 128
+#define dimensions_y 1
+#define dimensions (dimensions_x * dimensions_y)
+#define log2_dimensions_x 7
+#define log2_dimensions_y 0
+#define log2_dimensions (log2_dimensions_x + log2_dimensions_y)
+#define log2_pix_at_a_time 7
 
-    // If we do 16 instead of 8, only have enough memory for a short, not an int,
-    // and 16*32*255 does not fit in a short
-    // TODO:Read from GMEM 2 at a time to fit more into SMEM
-    __shared__ int acc[4][3][3][10][34]; //LAB+count, 3x3 neighbors, 8x32 values (33 for bank conflict avoidance)
-    const int arraySize = 4 * 3 * 3;
-    const int dimensions = 10 * 34; // Adjusted for mem bank conflict avoidance
+#define sums 54
+#define log2_pix_width 12
+#define const_pix_width 4096
+#define log2_spx_size 7
+#define log2_spx_width 5
+__global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data* d_own_data, spx_data* d_spx_data)
+{
+    //bool debug = (blockIdx.x == 20 && blockIdx.y == 30 && threadIdx.x == 5);
+    //if (debug) printf("D\n");
 
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = (blockIdx.y * blockDim.y + threadIdx.y) * pix_at_a_time; //See Opt6
-    int sx = threadIdx.x;
-    int sy = (y % (8 * pix_at_a_time)) / pix_at_a_time;
+    typedef int itemsToSum[dimensions];
+    __shared__ itemsToSum acc[6][3][3]; //LAB+count, 3x3 neighbors, 128 values
 
-    //int cc = threadIdx.y % 2; //See Opt6 (use in loop below)
-    //Guaranteed no bank conflicts here (regardless of Opt6 or not),
-    //because the last array index (sx) is the ID of the thread within the warp.
-    for (int nx=0;nx<3;++nx) for (int ny=0;ny<3;++ny) for(int c=0; c<4; ++c) acc[c][ny][nx][sy][sx]=0;
+    int x = (blockIdx.x << log2_dimensions_x) + threadIdx.x;
+    int y = ((blockIdx.y << log2_dimensions_y) + threadIdx.y) << log2_pix_at_a_time;
+    int sx = (threadIdx.y << log2_dimensions_x) + threadIdx.x; //thread id
 
-    //If using Opt6 need to sync here
-    //__syncthreads();
+    // Initialize SMEM to 0
+    int* accptr = (int*)acc;
+    itemsToSum* sumptr = (itemsToSum*)acc;
 
-    int i_center = blockIdx.x * blockDim.x / spx_size;
-    int j_center = (blockIdx.y * blockDim.y * pix_at_a_time) / spx_size; //See Opt6
-    //int j_center = y / spx_size;
+    #pragma unroll
+    for (int i=0; i<sums; ++i) sumptr[i][sx] = 0;
 
-    //If using Opt6 need this if statement
-    //if (cc==0)
-    //{
-    for (int yidx=0; yidx<pix_at_a_time; ++yidx)
-    {
-	if (y+yidx>=pix_height) break;
-        int pix_index = (y + yidx) * pix_width + x;
-        int i = d_own_data[pix_index].i;
-        int j = d_own_data[pix_index].j;
-        int nx = (i<i_center) ? 0 : ((i>i_center) ? 2 : 1);
+    accptr = (int*)acc;
+    
+    int i_center = blockIdx.x; // OPT14:  * blockDim.x / spx_size;
+    //int j_center = blockIdx.y; // OPT14: y / spx_size;
+    //int j_center = y >> log2_spx_size;
+    int j_center = y / spx_size;
+
+    int pix_index = (y << log2_pix_width) + x;
+    for (int yidx=0; yidx<pix_at_a_time; ++yidx) {
+	
+        int odata = *((int*)(d_own_data + pix_index));
+	own_data od = *((own_data*)(&odata));    
+	int i = od.i;
+        int j = od.j;
+        
+	int nx = (i<i_center) ? 0 : ((i>i_center) ? 2 : 1);
         int ny = (j<j_center) ? 0 : ((j>j_center) ? 2 : 1);
-	// Guaranteed no SMEM bank conflicts (last index sx is thread ID within warp)
-	// GMEM: A single warp reads consecutive pix_index values and the l/a/b are chars,
-	// so should be coalesced (and aligned, if pix_data is padded)
-        acc[0][ny][nx][sy][sx] = d_pix_data[pix_index].l + (yidx?acc[0][ny][nx][sy][sx]:0);
-        acc[1][ny][nx][sy][sx] = d_pix_data[pix_index].a + (yidx?acc[1][ny][nx][sy][sx]:0);
-        acc[2][ny][nx][sy][sx] = d_pix_data[pix_index].b + (yidx?acc[2][ny][nx][sy][sx]:0);
-        acc[3][ny][nx][sy][sx] = 1 + (yidx?acc[3][ny][nx][sy][sx]:0);
+
+        int pdata = *((int*)(d_pix_data + pix_index));
+	pix_data pd = *((pix_data*)(&pdata));
+
+	int ayidx=1;
+        acc[0][ny][nx][sx] = (int)pd.l
+            + (ayidx?(acc[0][ny][nx][sx]):0);
+        acc[1][ny][nx][sx] = (int)pd.a
+            + (ayidx?(acc[1][ny][nx][sx]):0);
+        acc[2][ny][nx][sx] = (int)pd.b
+            + (ayidx?(acc[2][ny][nx][sx]):0);
+        acc[3][ny][nx][sx] = (int)1
+            + (ayidx?(acc[3][ny][nx][sx]):0);
+        acc[4][ny][nx][sx] = (int)x
+            + (ayidx?(acc[4][ny][nx][sx]):0);
+        acc[5][ny][nx][sx] = (int)(y+yidx)
+            + (ayidx?(acc[5][ny][nx][sx]):0);
+        //if (debug) 
+		//printf("yidx:%d ny:%d nx:%d accX:%d, accY:%d\n", yidx, ny, nx, acc[4][ny][nx][sx], acc[5][ny][nx][sx]);
+	pix_index += const_pix_width;
     }
-    //}
    
     __syncthreads();
 
-    int* accptr = (int*)acc;
-
     // Collapse over X and Y
-    int tid = threadIdx.y * blockDim.x + threadIdx.x;
-
-    for (int step=32*8/2; step>0; step /= 2)
+    for (int log2_step=log2_dimensions-1; log2_step>=0; --log2_step)
     {
-	// step = 32 dimensions = 256 arraySize = 36
-	int locationIndex = tid % step; // 0..31
-	int threadGroup = tid / step; // 0..7
+	int step = 1 << log2_step;
+        int locationIndex = sx % step;
+        int threadGroup = sx >> log2_step;
+		
+	int maxThreadGroup = 1 << (log2_dimensions - log2_step);	
+        int maxLoopIndex = (sums + maxThreadGroup - 1) / maxThreadGroup;
 
-	//See Opt6
-	//int maxThreadGroup = blockDim.x * blockDim.y / step; // 8
-	int maxThreadGroup = 256 / step; // 8
+        // Divide arraySize (3*3*6=54) by max threadGroup + 1 and that's the loop
+        // Actual a = loop index * (max threadGroup + 1) + innerIndex
 
-	int maxLoopIndex = (arraySize + maxThreadGroup - 1) / maxThreadGroup; // 43/8 = 5
-
-	for (int loopIndex=0; loopIndex<maxLoopIndex; loopIndex++)
+        // It looks like a lot of unnecessary math (multiplications, etc) is going
+        // on below, but all attempts to optimize this lead to slowdowns. Looks like the
+        // compiler is doing something smart here.	
+        for (int loopIndex=0; loopIndex<maxLoopIndex; loopIndex++)
         {
-	    int innerIndex = loopIndex * maxThreadGroup + threadGroup; //0 8 16 24 32 + (0..7) --> 0..39
-	    if (innerIndex >= arraySize) continue;
-	   
-	    // Adjust for mem bank conflict avoidance (our max X is 33, not 32,
-	    // so every 32 locations we add 1 more)
-	    int adjLocIndex = locationIndex + 2*(locationIndex / 32);
-	    int adjStep = step + 2*(step / 32);
+            int innerIndex = loopIndex * maxThreadGroup + threadGroup;
+            if (innerIndex >= sums) continue; 
 
-            if (debug)
-	    {
-		// Print memory banks being accessed
-                printf("S%d L%d A: %d B: %d\n", step, loopIndex,
-		    (innerIndex*dimensions + adjLocIndex) % 32,
-		    (innerIndex*dimensions + adjLocIndex + adjStep) % 32);
-            }
-
-            *(accptr + (innerIndex*dimensions + adjLocIndex)) += 
-                *(accptr + (innerIndex*dimensions + adjLocIndex + adjStep));
+            *(accptr + ((innerIndex<<log2_dimensions) + locationIndex)) += 
+                *(accptr + ((innerIndex<<log2_dimensions) + locationIndex + step));
         }
-	__syncthreads();
+		
+        __syncthreads();
     }
 
-    if (threadIdx.y >= 2) return; //Keep 32*2=64 threads, enough for arraySize=3*3*4=36
-    int c = tid % 4;
-    tid /= 4;
-    int nx = tid % 3;
-    int ny = tid / 3;
-    if (ny>=3) return;
-
-    //ny = tid % 3;
-    //tid /= 3;
-    //nx = tid % 3;
-    //int c = tid / 3;
-    //if (c>=4) return;
+    if (sx >= sums) return;
+    int c = sx % 6;
+    sx /= 6;
+    int nx = sx % 3;
+    int ny = sx / 3;
 
     int j = j_center + ny - 1;
     if (j<0 || j>=spx_height) return;
-    
+		
     int i = i_center + nx - 1;
     if (i<0 || i>=spx_width) return;
 
-    int spx_index = j * spx_width + i;
-    atomicAdd(&(d_spx_data[spx_index].accum[c]), (int)acc[c][ny][nx][0][0]);
+    int spx_index = (j << log2_spx_width) + i;
+
+    int* accum = (int*)(d_spx_data[spx_index].accum);
+    //accum[sx*6 + c] = (int)acc[c][ny][nx][0];
+    atomicAdd(accum+c,(int)acc[c][ny][nx][0]);
 }
+
 
 __global__ void k_averaging(spx_data* d_spx_data)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
+    //bool debug = (i==20 && (j==15 || j==16));
+    //bool debug = true;
 
     if (i < spx_width && j < spx_height)
     {
         int spx_index = j * spx_width + i;
-        d_spx_data[spx_index].l = d_spx_data[spx_index].accum[0] / d_spx_data[spx_index].accum[3];
-        d_spx_data[spx_index].a = d_spx_data[spx_index].accum[1] / d_spx_data[spx_index].accum[3];
-        d_spx_data[spx_index].b = d_spx_data[spx_index].accum[2] / d_spx_data[spx_index].accum[3];
+	int num = 0, l = 0, a = 0, b = 0, x = 0, y = 0;
+	//for (int ny=0; ny<3; ++ny) for (int nx=0; nx<3; ++nx) 
+	//{
+            l   += d_spx_data[spx_index].accum/*[ny][nx]*/[0];
+            a   += d_spx_data[spx_index].accum/*[ny][nx]*/[1];
+            b   += d_spx_data[spx_index].accum/*[ny][nx]*/[2];
+            num += d_spx_data[spx_index].accum/*[ny][nx]*/[3];
+            x   += d_spx_data[spx_index].accum/*[ny][nx]*/[4];
+            y   += d_spx_data[spx_index].accum/*[ny][nx]*/[5];
+	//}
+	//if (debug) printf("i:%d j:%d l:%d a:%d b:%d num:%d x:%d y:%d\n",
+	    //i,j,l/num,a/num,b/num,num,x/num,y/num);
+        d_spx_data[spx_index].l = l / num;
+        d_spx_data[spx_index].a = a / num;
+        d_spx_data[spx_index].b = b / num;
+        d_spx_data[spx_index].x = x / num;
+        d_spx_data[spx_index].y = y / num;
     }
 }
 
 __global__ void k_ownershipOpt(const pix_data* d_pix_data, own_data* d_own_data, const spx_data* d_spx_data)
 {
-    __shared__ spx_data spx[9 * 32];
+    return; // Does not work after opt14, used to be 9*32
+    __shared__ spx_data spx[1 * 1];
 
     float min_dist = 10E99;// max_float;
     int min_i = 0;
@@ -336,7 +364,7 @@ __global__ void k_ownershipOpt2(const pix_data* d_pix_data, own_data* d_own_data
     int min_i = 0;
     int min_j = 0;
 
-    __shared__ int spx[3][3][5]; // Y, X, LABXY
+    __shared__ int spx[4][3][5]; // Y, X, LABXY - [4] in first dimension to minimize shared memory bank conflicts
 
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -347,40 +375,7 @@ __global__ void k_ownershipOpt2(const pix_data* d_pix_data, own_data* d_own_data
         int i_center = x/spx_size;
         int j_center = y/spx_size;
 
-	// Initialize SMEM
-        int tid = threadIdx.x + blockDim.x * threadIdx.y;
-        int nx = tid % 3;
-        tid /= 3;
-        int ny = tid % 3;
-        tid /= 3;
-        if (tid < 5)
-        {
-            int value;
-	        int i = i_center + nx - 1;
-	        int j = j_center + ny - 1;
-            
-            if (i<0 || i>=spx_width || j<0 || j>=spx_height)
-            {
-                value = -1;
-            }
-	        else
-            {
-	            int spx_index = j * spx_width + i;
-	            const spx_data& spix = d_spx_data[spx_index];
-	            switch(tid) //TODO:Get rid of it by using better data struct.?
-	            {
-                    case 0: value=spix.l; break;
-		            case 1: value=spix.a; break;
-                    case 2: value=spix.b; break;
-    		        case 3: value=spix.x; break;
-		            case 4: value=spix.y; break;
-                }
-            }
-            spx[ny][nx][tid] = value;
-        }
-        
-        __syncthreads();
-
+        // Reading as a single blob
         int lab_data = *((int*)(d_pix_data + pix_index));
         pix_data px_data = *((pix_data*)(&lab_data));   
 
@@ -388,9 +383,43 @@ __global__ void k_ownershipOpt2(const pix_data* d_pix_data, own_data* d_own_data
         unsigned char a = px_data.a;
         unsigned char b = px_data.b;
 
-        //int l = d_pix_data[pix_index].l;
-        //int a = d_pix_data[pix_index].a;
-        //int b = d_pix_data[pix_index].b;
+	    // Initialize SMEM
+        int tid = threadIdx.x + blockDim.x * threadIdx.y;
+        int nx = tid % 3;
+        tid /= 3;
+        int ny = tid % 3;
+        tid /= 3;
+        
+        if (tid == 0)
+        {
+            int vl=-1;
+            int va=-1;
+            int vb=-1;
+            int vx=-1;
+            int vy=-1;
+	        int i = i_center + nx - 1;
+	        int j = j_center + ny - 1;
+            
+            if (i>=0 && i<spx_width && j>=0 && j<spx_height)
+            {
+	            int spx_index = j * spx_width + i;
+                const spx_data& spix = d_spx_data[spx_index]; //TODO: This is compromising efficiency by 25%! But still the best result
+
+                vl=spix.l;
+                va=spix.a;
+                vb=spix.b;
+                vx=spix.x;
+                vy=spix.y;
+            }
+
+            spx[ny][nx][0] = vl;
+            spx[ny][nx][1] = va;
+            spx[ny][nx][2] = vb;
+            spx[ny][nx][3] = vx;
+            spx[ny][nx][4] = vy;
+        }
+        
+        __syncthreads();
 
         for (int ny=0; ny<3; ++ny) for (int nx=0; nx<3; ++nx)
         {
@@ -421,22 +450,137 @@ __global__ void k_ownershipOpt2(const pix_data* d_pix_data, own_data* d_own_data
             }
         }
 
-        d_own_data[pix_index].i = min_i;
-        d_own_data[pix_index].j = min_j;
+        // Writing as a blob
+        // This reaches 100% write efficiency.
+        int mins = min_i << 0 | min_j <<  8;
+        *(int*)(d_own_data  + pix_index) = mins;
+    }
+}
+
+__global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data, const spx_data* d_spx_data)
+{
+    __shared__ int spx[3][3][2]; // Y, X, LABXY
+
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    int i_center = x/spx_size;
+    int j_center = y*pix_per_thread/spx_size;
+
+    // Copy super-pixels  to SMEM
+    int tid = threadIdx.x + blockDim.x * threadIdx.y;
+    int nx = tid % 3;
+    tid /= 3;
+    int ny = tid % 3;
+    tid /= 3;
+    
+    if (tid == 0)
+    {
+	int inta = (int)(0xFFFFFFFF);
+	int intb = (int)(0xFFFFFFFF);
+        //int vl=-1;
+        //int va=-1;
+        //int vb=-1;
+        //int vx=-1;
+        //int vy=-1;
+        int i = i_center + nx - 1;
+        int j = j_center + ny - 1;
+        
+        if (i>=0 && i<spx_width && j>=0 && j<spx_height)
+        {
+            int spx_index = j * spx_width + i;
+	    inta = *((int*)(d_spx_data + spx_index));
+	    intb = *((int*)(d_spx_data + spx_index) + 1);
+            //const spx_data& spix = d_spx_data[spx_index];
+            
+            //vl=spix.l;
+            //va=spix.a;
+            //vb=spix.b;
+            //vx=spix.x;
+            //vy=spix.y;
+
+            // The following works, but  made the performance worse
+            //int64_t _labxy  =  *((int64_t*)(d_spx_data + spx_index));
+            //spx_data labxy = *((spx_data*)(&_labxy));
+
+            // vl=labxy.l;
+            // va=labxy.a;
+            // vb=labxy.b;
+            // vx=labxy.x;
+            // vy=labxy.y;
+        }
+
+        spx[ny][nx][0] = inta; //vl;
+        spx[ny][nx][1] = intb; //va;
+        //spx[ny][nx][2] = vb;
+        //spx[ny][nx][3] = vx;
+        //spx[ny][nx][4] = vy;
+    }
+    
+    __syncthreads();
+
+
+    // Trying to  change multiplications by pix_per_thread for
+    // left bitshift 4 made the performance worse. I guess because
+    // this code will require the float point unit anyway, our good
+    // intentions don't matter.
+    for (int i=0; i<pix_per_thread; i++)
+    {
+        int pix_index = (((y*pix_per_thread+i) * pix_width) + x);
+        int lab_data = *((int*)(d_pix_data + pix_index));
+        pix_data px = *((pix_data*)(&lab_data));
+
+        // Compute ownership
+        float min_dist = 10E99;
+        int min_i = 0;
+        int min_j = 0;
+    
+        for (int n=0; n<9; ++n)
+        { 
+            int* spix = spx[n/3][n%3];
+	    spx_data data = *((spx_data*)spix);
+            if (data.l==-1) continue;
+	    
+
+            float D = (((float)px.l-data.l)*((float)px.l-data.l) + ((float)px.a-data.a)*((float)px.a-data.a) + ((float)px.b-data.b)*((float)px.b-data.b)) +
+            slic_factor * ((x-data.x)*(x-data.x) + (y*pix_per_thread+i-data.y)*(y*pix_per_thread+i-data.y));
+
+            if (D < min_dist)
+            {
+                min_dist = D;
+                min_j = y*pix_per_thread/spx_size + n/3 - 1;
+                min_i = x/spx_size + n%3 - 1;
+            }
+        }
+        
+        // Writing as a blob
+        // This reaches 100% write efficiency.
+        *(int*)(d_own_data + pix_index) = min_i << 0 | min_j << 8;         
     }
 }
 
 __global__ void k_reset(spx_data* d_spx_data)
 {
+    // Shared memory conflict test
+    // Removing the "*64" below results in no bank conflicts, so adjacent threads
+    // reading adjacent shorts do not cause conflicts.
+    //__shared__ unsigned short arr[32 * 2 * 100];
+    //int a=arr[threadIdx.x * 64];
+    //d_spx_data[0].accum[0]=a;
+
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (i < spx_width && j < spx_height)
     {
         int spx_index = j * spx_width + i;
-        d_spx_data[spx_index].accum[0] = 0;
-        d_spx_data[spx_index].accum[1] = 0;
-	d_spx_data[spx_index].accum[2] = 0;
-        d_spx_data[spx_index].accum[3] = 0;
+	//for (int ny=0; ny<3; ++ny) for (int nx=0; nx<3; ++nx) {
+            d_spx_data[spx_index].accum/*[ny][nx]*/[0] = 0;
+            d_spx_data[spx_index].accum/*[ny][nx]*/[1] = 0;
+	        d_spx_data[spx_index].accum/*[ny][nx]*/[2] = 0;
+            d_spx_data[spx_index].accum/*[ny][nx]*/[3] = 0;
+    	    d_spx_data[spx_index].accum/*[ny][nx]*/[4] = 0;
+            d_spx_data[spx_index].accum/*[ny][nx]*/[5] = 0;
+	//}
     }
 }
