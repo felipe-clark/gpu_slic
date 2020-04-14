@@ -39,12 +39,12 @@ __global__ void k_cumulativeCountOrig(const pix_data* d_pix_data, const own_data
         int j = d_own_data[pix_index].j;
         int spx_index = j * spx_width + i;
 
-        atomicAdd(&(d_spx_data[spx_index].accum/*[0][0]*/[0]), d_pix_data[pix_index].l);
-        atomicAdd(&(d_spx_data[spx_index].accum/*[0][0]*/[1]), d_pix_data[pix_index].a);
-        atomicAdd(&(d_spx_data[spx_index].accum/*[0][0]*/[2]), d_pix_data[pix_index].b);
-        atomicAdd(&(d_spx_data[spx_index].accum/*[0][0]*/[3]), 1);
-        atomicAdd(&(d_spx_data[spx_index].accum/*[0][0]*/[4]), x);
-        atomicAdd(&(d_spx_data[spx_index].accum/*[0][0]*/[5]), y);
+        atomicAdd(&(d_spx_data[spx_index].accum[0][0][0]), d_pix_data[pix_index].l);
+        atomicAdd(&(d_spx_data[spx_index].accum[0][0][1]), d_pix_data[pix_index].a);
+        atomicAdd(&(d_spx_data[spx_index].accum[0][0][2]), d_pix_data[pix_index].b);
+        atomicAdd(&(d_spx_data[spx_index].accum[0][0][3]), 1);
+        atomicAdd(&(d_spx_data[spx_index].accum[0][0][4]), x);
+        atomicAdd(&(d_spx_data[spx_index].accum[0][0][5]), y);
     }
 }
 
@@ -66,41 +66,51 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     //bool debug = (blockIdx.x == 20 && blockIdx.y == 30 && threadIdx.x == 5);
     //if (debug) printf("D\n");
 
-    typedef int itemsToSum[dimensions];
+    typedef int smem_type;
+    typedef smem_type itemsToSum[dimensions];
     __shared__ itemsToSum acc[6][3][3]; //LAB+count, 3x3 neighbors, 128 values
 
+    // Commented-out items are not necessary when Y block size is 1
     int x = (blockIdx.x << log2_dimensions_x) + threadIdx.x;
-    int y = ((blockIdx.y << log2_dimensions_y) + threadIdx.y) << log2_pix_at_a_time;
-    int sx = (threadIdx.y << log2_dimensions_x) + threadIdx.x; //thread id
+    int y = ((blockIdx.y /* << log2_dimensions_y */) /* + threadIdx.y*/) << log2_pix_at_a_time;
+    int sx = /* (threadIdx.y << log2_dimensions_x) + */ threadIdx.x; //thread id
 
     // Initialize SMEM to 0
-    int* accptr = (int*)acc;
+    smem_type* accptr = (smem_type*)acc;
     itemsToSum* sumptr = (itemsToSum*)acc;
 
     #pragma unroll
     for (int i=0; i<sums; ++i) sumptr[i][sx] = 0;
 
-    accptr = (int*)acc;
-    
     int i_center = blockIdx.x; // OPT14:  * blockDim.x / spx_size;
     //int j_center = blockIdx.y; // OPT14: y / spx_size;
     //int j_center = y >> log2_spx_size;
-    int j_center = y / spx_size;
+    //int j_center = y / spx_size;
+    int j_center = blockIdx.y;
 
     int pix_index = (y << log2_pix_width) + x;
     for (int yidx=0; yidx<pix_at_a_time; ++yidx) {
 	
+	// FULLY COALESCED (Opt 15)
         int odata = *((int*)(d_own_data + pix_index));
 	own_data od = *((own_data*)(&odata));    
 	int i = od.i;
         int j = od.j;
+	// Opt 14:
+	// int i = d_own_data[pix_index].i;
+	// int j = d_own_data[pix_index].j;
         
 	int nx = (i<i_center) ? 0 : ((i>i_center) ? 2 : 1);
         int ny = (j<j_center) ? 0 : ((j>j_center) ? 2 : 1);
 
+	// FULLY COALESCED (Opt 15)
         int pdata = *((int*)(d_pix_data + pix_index));
 	pix_data pd = *((pix_data*)(&pdata));
+	// Opt 14:
+	// pix_data pd = d_pix_data[pix_index];
 
+	// This should have been conditioned on yidx, but
+	// for some reason always doing it makes it faster??
 	int ayidx=1;
         acc[0][ny][nx][sx] = (int)pd.l
             + (ayidx?(acc[0][ny][nx][sx]):0);
@@ -164,8 +174,8 @@ __global__ void k_cumulativeCountOpt1(const pix_data* d_pix_data, const own_data
     int spx_index = (j << log2_spx_width) + i;
 
     int* accum = (int*)(d_spx_data[spx_index].accum);
-    //accum[sx*6 + c] = (int)acc[c][ny][nx][0];
-    atomicAdd(accum+c,(int)acc[c][ny][nx][0]);
+    accum[sx*6 + c] = (int)acc[c][ny][nx][0];
+    //atomicAdd(accum+c,(int)acc[c][ny][nx][0]);
 }
 
 
@@ -180,15 +190,15 @@ __global__ void k_averaging(spx_data* d_spx_data)
     {
         int spx_index = j * spx_width + i;
 	int num = 0, l = 0, a = 0, b = 0, x = 0, y = 0;
-	//for (int ny=0; ny<3; ++ny) for (int nx=0; nx<3; ++nx) 
-	//{
-            l   += d_spx_data[spx_index].accum/*[ny][nx]*/[0];
-            a   += d_spx_data[spx_index].accum/*[ny][nx]*/[1];
-            b   += d_spx_data[spx_index].accum/*[ny][nx]*/[2];
-            num += d_spx_data[spx_index].accum/*[ny][nx]*/[3];
-            x   += d_spx_data[spx_index].accum/*[ny][nx]*/[4];
-            y   += d_spx_data[spx_index].accum/*[ny][nx]*/[5];
-	//}
+	for (int ny=0; ny<3; ++ny) for (int nx=0; nx<3; ++nx) 
+	{
+            l   += d_spx_data[spx_index].accum[ny][nx][0];
+            a   += d_spx_data[spx_index].accum[ny][nx][1];
+            b   += d_spx_data[spx_index].accum[ny][nx][2];
+            num += d_spx_data[spx_index].accum[ny][nx][3];
+            x   += d_spx_data[spx_index].accum[ny][nx][4];
+            y   += d_spx_data[spx_index].accum[ny][nx][5];
+	}
 	//if (debug) printf("i:%d j:%d l:%d a:%d b:%d num:%d x:%d y:%d\n",
 	    //i,j,l/num,a/num,b/num,num,x/num,y/num);
         d_spx_data[spx_index].l = l / num;
@@ -548,13 +558,13 @@ __global__ void k_reset(spx_data* d_spx_data)
     if (i < spx_width && j < spx_height)
     {
         int spx_index = j * spx_width + i;
-	//for (int ny=0; ny<3; ++ny) for (int nx=0; nx<3; ++nx) {
-            d_spx_data[spx_index].accum/*[ny][nx]*/[0] = 0;
-            d_spx_data[spx_index].accum/*[ny][nx]*/[1] = 0;
-	        d_spx_data[spx_index].accum/*[ny][nx]*/[2] = 0;
-            d_spx_data[spx_index].accum/*[ny][nx]*/[3] = 0;
-    	    d_spx_data[spx_index].accum/*[ny][nx]*/[4] = 0;
-            d_spx_data[spx_index].accum/*[ny][nx]*/[5] = 0;
-	//}
+	for (int ny=0; ny<3; ++ny) for (int nx=0; nx<3; ++nx) {
+            d_spx_data[spx_index].accum[ny][nx][0] = 0;
+            d_spx_data[spx_index].accum[ny][nx][1] = 0;
+	    d_spx_data[spx_index].accum[ny][nx][2] = 0;
+            d_spx_data[spx_index].accum[ny][nx][3] = 0;
+    	    d_spx_data[spx_index].accum[ny][nx][4] = 0;
+            d_spx_data[spx_index].accum[ny][nx][5] = 0;
+	}
     }
 }
