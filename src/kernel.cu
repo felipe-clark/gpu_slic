@@ -476,45 +476,21 @@ __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data
     
     if (tid == 0)
     {
-	int inta = (int)(0xFFFFFFFF);
-	int intb = (int)(0xFFFFFFFF);
-        //int vl=-1;
-        //int va=-1;
-        //int vb=-1;
-        //int vx=-1;
-        //int vy=-1;
+    	int inta = (int)(0xFFFFFFFF);
+    	int intb = (int)(0xFFFFFFFF);
+
         int i = i_center + nx - 1;
         int j = j_center + ny - 1;
         
         if (i>=0 && i<spx_width && j>=0 && j<spx_height)
         {
             int spx_index = j * spx_width + i;
-	    inta = *((int*)(d_spx_data + spx_index));
-	    intb = *((int*)(d_spx_data + spx_index) + 1);
-            //const spx_data& spix = d_spx_data[spx_index];
-            
-            //vl=spix.l;
-            //va=spix.a;
-            //vb=spix.b;
-            //vx=spix.x;
-            //vy=spix.y;
-
-            // The following works, but  made the performance worse
-            //int64_t _labxy  =  *((int64_t*)(d_spx_data + spx_index));
-            //spx_data labxy = *((spx_data*)(&_labxy));
-
-            // vl=labxy.l;
-            // va=labxy.a;
-            // vb=labxy.b;
-            // vx=labxy.x;
-            // vy=labxy.y;
+	        inta = *((int*)(d_spx_data + spx_index));
+	        intb = *((int*)(d_spx_data + spx_index) + 1);
         }
 
         spx[ny][nx][0] = inta; //vl;
         spx[ny][nx][1] = intb; //va;
-        //spx[ny][nx][2] = vb;
-        //spx[ny][nx][3] = vx;
-        //spx[ny][nx][4] = vy;
     }
     
     __syncthreads();
@@ -538,9 +514,7 @@ __global__ void k_ownershipOpt3(const pix_data* d_pix_data, own_data* d_own_data
         for (int n=0; n<9; ++n)
         { 
             int* spix = spx[n/3][n%3];
-	    spx_data data = *((spx_data*)spix);
-            if (data.l==-1) continue;
-	    
+	        spx_data data = *((spx_data*)spix);   
 
             float D = (((float)px.l-data.l)*((float)px.l-data.l) + ((float)px.a-data.a)*((float)px.a-data.a) + ((float)px.b-data.b)*((float)px.b-data.b)) +
             slic_factor * ((x-data.x)*(x-data.x) + (y*pix_per_thread+i-data.y)*(y*pix_per_thread+i-data.y));
