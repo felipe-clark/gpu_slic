@@ -8,5 +8,7 @@ Project by:
 * Felipe Sander Pereira Clark
 * Harika Gaggara
 
+You can learn more about this project here: https://youtu.be/cDfFRGXyGNg
+
 ## Goal
 Implement the Simple Linear Iterative Clustering algorithm for super pixels using CUDA on an NVIDIA GTX-980.
